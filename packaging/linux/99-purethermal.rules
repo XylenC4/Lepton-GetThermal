@@ -1,0 +1,2 @@
+# PureThermal (FLIR Lepton) - allow logged-in users raw USB access for Lepton-GetThermal
+SUBSYSTEM=="usb", ATTR{idVendor}=="1e4e", ATTR{idProduct}=="0100", MODE="0660", GROUP="plugdev", TAG+="uaccess"

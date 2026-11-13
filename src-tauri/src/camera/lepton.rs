@@ -173,6 +173,19 @@ impl LeptonController {
         self.set_attribute(command_id, &[value])
     }
 
+    /// Read a Lepton SDK enum attribute. SDK enums are 32-bit (2 words); the
+    /// PureThermal forwards the request length to the Lepton, which rejects
+    /// any length that does not match the attribute size.
+    pub fn get_enum(&self, command_id: u16) -> Result<u32, CameraError> {
+        let w = self.get_attribute(command_id, 2)?;
+        Ok(w[0] as u32 | (w[1] as u32) << 16)
+    }
+
+    /// Write a Lepton SDK enum attribute (32-bit, 2 words).
+    pub fn set_enum(&self, command_id: u16, value: u32) -> Result<(), CameraError> {
+        self.set_attribute(command_id, &[value as u16, (value >> 16) as u16])
+    }
+
     /// Execute a run command by sending the control_id as a single byte,
     /// matching the PureThermal firmware protocol.
     pub fn run_command(&self, command_id: u16) -> Result<(), CameraError> {
@@ -189,22 +202,22 @@ impl LeptonController {
 
     /// Get AGC enable state. Returns true if AGC is enabled.
     pub fn get_agc_enable(&self) -> Result<bool, CameraError> {
-        Ok(self.get_u16(LEP_AGC_ENABLE)? != 0)
+        Ok(self.get_enum(LEP_AGC_ENABLE)? as u16 != 0)
     }
 
     /// Enable or disable AGC.
     pub fn set_agc_enable(&self, enable: bool) -> Result<(), CameraError> {
-        self.set_u16(LEP_AGC_ENABLE, if enable { 1 } else { 0 })
+        self.set_enum(LEP_AGC_ENABLE, enable as u32)
     }
 
     /// Get AGC policy (0 = linear, 1 = HEQ).
     pub fn get_agc_policy(&self) -> Result<u16, CameraError> {
-        self.get_u16(LEP_AGC_POLICY)
+        Ok(self.get_enum(LEP_AGC_POLICY)? as u16)
     }
 
     /// Set AGC policy (0 = linear, 1 = HEQ).
     pub fn set_agc_policy(&self, policy: u16) -> Result<(), CameraError> {
-        self.set_u16(LEP_AGC_POLICY, policy)
+        self.set_enum(LEP_AGC_POLICY, policy as u32)
     }
 
     // ------------------------------------------------------------------
@@ -213,12 +226,17 @@ impl LeptonController {
 
     /// Get FFC shutter mode (0 = manual, 1 = auto).
     pub fn get_ffc_mode(&self) -> Result<u16, CameraError> {
-        self.get_u16(LEP_SYS_FFC_SHUTTER_MODE)
+        // LEP_SYS_FFC_SHUTTER_MODE_OBJ_T is 32 bytes; shutterMode is the first (32-bit) field.
+        Ok(self.get_attribute(LEP_SYS_FFC_SHUTTER_MODE, 16)?[0])
     }
 
     /// Set FFC shutter mode (0 = manual, 1 = auto).
     pub fn set_ffc_mode(&self, mode: u16) -> Result<(), CameraError> {
-        self.set_u16(LEP_SYS_FFC_SHUTTER_MODE, mode)
+        // Read-modify-write the full 32-byte shutter mode object.
+        let mut obj = self.get_attribute(LEP_SYS_FFC_SHUTTER_MODE, 16)?;
+        obj[0] = mode;
+        obj[1] = 0;
+        self.set_attribute(LEP_SYS_FFC_SHUTTER_MODE, &obj)
     }
 
     /// Trigger a flat-field correction (FFC / shutter recalibration).
@@ -228,12 +246,12 @@ impl LeptonController {
 
     /// Get gain mode (0 = high, 1 = low, 2 = auto).
     pub fn get_gain_mode(&self) -> Result<u16, CameraError> {
-        self.get_u16(LEP_SYS_GAIN_MODE)
+        Ok(self.get_enum(LEP_SYS_GAIN_MODE)? as u16)
     }
 
     /// Set gain mode (0 = high, 1 = low, 2 = auto).
     pub fn set_gain_mode(&self, mode: u16) -> Result<(), CameraError> {
-        self.set_u16(LEP_SYS_GAIN_MODE, mode)
+        self.set_enum(LEP_SYS_GAIN_MODE, mode as u32)
     }
 
     /// Get the FLIR serial number (4 words = 64-bit serial).
@@ -252,22 +270,22 @@ impl LeptonController {
 
     /// Get video polarity (0 = white-hot, 1 = black-hot).
     pub fn get_polarity(&self) -> Result<u16, CameraError> {
-        self.get_u16(LEP_VID_POLARITY)
+        Ok(self.get_enum(LEP_VID_POLARITY)? as u16)
     }
 
     /// Set video polarity (0 = white-hot, 1 = black-hot).
     pub fn set_polarity(&self, polarity: u16) -> Result<(), CameraError> {
-        self.set_u16(LEP_VID_POLARITY, polarity)
+        self.set_enum(LEP_VID_POLARITY, polarity as u32)
     }
 
     /// Get pseudo-color LUT index.
     pub fn get_pcolor_lut(&self) -> Result<u16, CameraError> {
-        self.get_u16(LEP_VID_PCOLOR_LUT)
+        Ok(self.get_enum(LEP_VID_PCOLOR_LUT)? as u16)
     }
 
     /// Set pseudo-color LUT index.
     pub fn set_pcolor_lut(&self, lut: u16) -> Result<(), CameraError> {
-        self.set_u16(LEP_VID_PCOLOR_LUT, lut)
+        self.set_enum(LEP_VID_PCOLOR_LUT, lut as u32)
     }
 
     // ------------------------------------------------------------------
@@ -287,7 +305,7 @@ impl LeptonController {
 
     /// Get TLinear resolution (0 = 0.1K, 1 = 0.01K).
     pub fn get_tlinear_resolution(&self) -> Result<u16, CameraError> {
-        self.get_u16(LEP_RAD_TLINEAR_RESOLUTION)
+        Ok(self.get_enum(LEP_RAD_TLINEAR_RESOLUTION)? as u16)
     }
 
     // ------------------------------------------------------------------

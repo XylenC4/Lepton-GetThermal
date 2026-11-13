@@ -23,7 +23,7 @@ struct FrameEvent {
 
 #[tauri::command]
 pub fn connect_camera(state: State<'_, AppState>) -> Result<String, String> {
-    eprintln!("[lepton-getthermal] Connecting via IOKit USB...");
+    eprintln!("[lepton-getthermal] Connecting via USB...");
 
     let stream = Arc::new(UsbStream::open().map_err(|e| {
         eprintln!("[lepton-getthermal] USB open failed: {e}");

@@ -3,11 +3,11 @@
 
 fn main() {
     // Redirect stderr to a log file so we can see logs when launched via `open`
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, unix))]
     {
         use std::fs::File;
         use std::os::unix::io::IntoRawFd;
-        if let Ok(f) = File::create("/tmp/lepton-getthermal.log") {
+        if let Ok(f) = File::create(std::env::temp_dir().join("lepton-getthermal.log")) {
             let fd = f.into_raw_fd();
             unsafe { libc::dup2(fd, 2); }
         }

@@ -25,3 +25,7 @@ thiserror = "2"
 libc = "0.2"
 ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
 ndarray = "0.17"
+
+# libusb backend (Linux, Windows, Android). macOS keeps the native IOKit backend.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+libusb1-sys = { version = "0.7", features = ["vendored"] }
