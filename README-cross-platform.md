@@ -25,20 +25,23 @@ libusb cannot talk to a device while Windows' webcam driver (`usbvideo.sys`) own
 The camera then no longer shows up as a webcam in other apps. To undo this, open Device Manager,
 right-click the device, choose *Uninstall device* and tick *Delete the driver*, then replug it.
 
-### 2. Install the app
+### 2. Run the app (portable, nothing to install)
 
-Run `Lepton-GetThermal_<version>_x64-setup.exe`. It needs the WebView2 runtime, which comes with
-Windows 10/11; the installer fetches it if it's missing.
+Unzip `Lepton-GetThermal_<version>_x64-portable.zip` anywhere (a USB stick works too) and start
+`Lepton-GetThermal.exe`. The zip contains the exe, `DirectML.dll` and the Visual C++ runtime DLLs,
+which Microsoft allows to be shipped alongside an app.
+The WebView2 cache goes to `webview-data/` next to the exe if that folder is writable.
+WebView2 itself comes with Windows 11 and current Windows 10.
 
-### Building the Windows installer (on Linux)
+### Building on Linux
 
 ```bash
-sudo apt install clang lld llvm nsis
+sudo apt install clang lld llvm cabextract          # + nsis for --installer
 rustup target add x86_64-pc-windows-msvc
 cargo install --locked cargo-xwin
 npm install
-npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc   # host CLI rejects --bundles nsis; NSIS is built by default
-# -> src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+scripts/build-windows.sh               # -> src-tauri/target/x86_64-pc-windows-msvc/release/portable/*.zip
+scripts/build-windows.sh --installer   # also builds an NSIS setup.exe
 ```
 
 ## Linux
