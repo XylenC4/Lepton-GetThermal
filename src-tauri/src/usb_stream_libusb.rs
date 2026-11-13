@@ -473,7 +473,10 @@ impl Drop for UsbStream {
     fn drop(&mut self) {
         let _ = self.stop_stream();
         unsafe {
-            for &i in &self.claimed {
+            // Release VideoStreaming before VideoControl: libusb re-attaches the
+            // kernel driver (uvcvideo) on release, and uvcvideo binds via the VC
+            // interface, needing the VS interface to be free at that moment.
+            for &i in self.claimed.iter().rev() {
                 ffi::libusb_release_interface(self.handle, i as c_int);
             }
             ffi::libusb_close(self.handle);
