@@ -12,6 +12,8 @@ pub struct DeviceInfo {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
+    /// USB driver in use, e.g. "WinUSB", "libusbK" (Windows), "libusb", "IOKit".
+    pub usb_driver: String,
 }
 
 /// Camera connection state

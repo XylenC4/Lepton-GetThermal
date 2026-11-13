@@ -25,9 +25,24 @@ struct FrameEvent {
 pub fn connect_camera(state: State<'_, AppState>) -> Result<String, String> {
     eprintln!("[lepton-getthermal] Connecting via USB...");
 
+    // Windows: make sure the PureThermal is bound to WinUSB/libusbK before libusb
+    // tries to open it, and explain how to fix it if not.
+    let driver = crate::usb_driver_check::check();
+    eprintln!("[lepton-getthermal] USB driver check: {:?} - {}", driver.state, driver.summary);
+    for d in &driver.details {
+        eprintln!("[lepton-getthermal]   {d}");
+    }
+    if !driver.usable() {
+        return Err(driver.message());
+    }
+
     let stream = Arc::new(UsbStream::open().map_err(|e| {
         eprintln!("[lepton-getthermal] USB open failed: {e}");
-        e.to_string()
+        if driver.hint.is_empty() {
+            e.to_string()
+        } else {
+            format!("{e} ({})", driver.message())
+        }
     })?);
     eprintln!("[lepton-getthermal] USB device opened");
 
@@ -49,6 +64,13 @@ pub fn connect_camera(state: State<'_, AppState>) -> Result<String, String> {
 
     *state.lepton.lock() = Some(lepton);
     Ok(part)
+}
+
+/// Which USB driver Windows has bound to the PureThermal (WinUSB / libusbK /
+/// usbvideo / ...), with a fix-it hint. Not applicable on Linux/macOS.
+#[tauri::command]
+pub fn get_usb_driver_status() -> crate::usb_driver_check::DriverReport {
+    crate::usb_driver_check::check()
 }
 
 #[tauri::command]

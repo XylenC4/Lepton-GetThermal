@@ -17,6 +17,7 @@ export interface DeviceInfo {
   width: number;
   height: number;
   fps: number;
+  usb_driver: string;
 }
 
 export type Palette = "ironblack" | "rainbow" | "grayscale";

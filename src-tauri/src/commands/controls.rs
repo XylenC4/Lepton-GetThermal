@@ -50,6 +50,7 @@ pub fn get_device_info(state: State<'_, AppState>) -> Result<DeviceInfo, String>
             width: 0,
             height: 0,
             fps: 0,
+            usb_driver: crate::usb_driver_check::check().driver,
         })
     })
 }

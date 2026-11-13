@@ -25,6 +25,10 @@ export function DeviceInfo({ info }: DeviceInfoProps) {
         <span>{info.serial_number || "\u2014"}</span>
       </div>
       <div className="info-row">
+        <span>USB driver</span>
+        <span>{info.usb_driver || "\u2014"}</span>
+      </div>
+      <div className="info-row">
         <span>Radiometry</span>
         <span>{info.supports_radiometry ? "Yes" : "No"}</span>
       </div>

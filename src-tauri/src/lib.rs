@@ -1,6 +1,7 @@
 mod camera;
 mod commands;
 mod processing;
+mod usb_driver_check;
 mod usb_stream;
 mod uvc_descriptors;
 mod uvc_payload;
@@ -55,6 +56,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::stream::connect_camera,
+            commands::stream::get_usb_driver_status,
             commands::stream::start_stream,
             commands::stream::stop_stream,
             commands::stream::set_palette,

@@ -31,4 +31,4 @@ ndarray = "0.17"
 libusb1-sys = { version = "0.7", features = ["vendored"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_Foundation"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_Foundation", "Win32_Devices_DeviceAndDriverInstallation"] }
