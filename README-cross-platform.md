@@ -88,8 +88,19 @@ cd src-tauri && cargo test --lib hw_ -- --ignored --nocapture
 
 ## Viewer features added in this fork
 
-All platforms:
+All platforms. The left panel has three tabs: **View** (palette, polarity, contrast, markers,
+upscale, capture), **Analyze** (peak hold, difference, isotherm) and **Device** (info, FFC,
+theme).
 
+- **Equalized contrast** (*View → Contrast: Equalized*): plateau histogram equalization
+  spreads the colors over the temperatures that actually occur, so one hot object no longer
+  flattens the rest of the scene. The scale stays a temperature axis with the range handles;
+  its gradient is drawn non-linearly, from 17 reference points computed in Rust.
+- **Temperature under the pointer:** hover anywhere over the image to read the temperature and
+  the pixel position, taken from the raw frame on screen.
+- **Peak hold** (*Analyze → Peak hold: Max / Min*): each pixel keeps its hottest (or coldest)
+  value since the start or the last *Reset*. This shows intermittent hot spots. The scale,
+  markers and pointer readout use the held image; the spot temperature stays live.
 - **Themes:** *Auto / Light / Dark* switch at the bottom of the left panel. *Auto* follows the
   OS theme; the choice is remembered, and the window title bar follows it.
 - **Temperature range on the scale:** drag the two handles on the color scale (right panel) to
