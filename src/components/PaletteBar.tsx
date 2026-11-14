@@ -12,6 +12,10 @@ interface PaletteBarProps {
   /** Fixed color-mapping range, or null for automatic (scene min/max). */
   range: DisplayRange | null;
   onRangeChange: (range: DisplayRange | null) => void;
+  /** Histogram-equalized contrast: draw the gradient non-linearly using `ticks`. */
+  equalized?: boolean;
+  /** Raw values at every 1/16 of the color scale (from the backend). */
+  ticks?: number[];
 }
 
 // Sampled from the actual Rust LUT data at key indices to match the real colorization.
@@ -58,6 +62,35 @@ function rawToCelsius(raw: number): string {
   return ((raw - 2731.5) / 10).toFixed(1);
 }
 
+/** Palette color at gray fraction g (0..1), interpolated between the stops. */
+function colorAt(stops: [string, number][], g: number): string {
+  const rgb = (c: string) => c.match(/\d+/g)!.map(Number);
+  const p = g * 100;
+  let i = 0;
+  while (i < stops.length - 2 && stops[i + 1][1] < p) i++;
+  const [c0, p0] = stops[i];
+  const [c1, p1] = stops[Math.min(i + 1, stops.length - 1)];
+  const f = p1 > p0 ? Math.min(1, Math.max(0, (p - p0) / (p1 - p0))) : 0;
+  const a = rgb(c0);
+  const b = rgb(c1);
+  return `rgb(${a.map((v, k) => Math.round(v + (b[k] - v) * f)).join(",")})`;
+}
+
+/**
+ * Gradient for histogram-equalized contrast. The scale stays a linear temperature
+ * axis; `ticks[k]` is the temperature that gets gray level k/(n-1), so each sampled
+ * palette color is placed at its real temperature within the active range.
+ */
+function equalizedGradient(stops: [string, number][], ticks: number[], range: DisplayRange): string {
+  const n = ticks.length - 1;
+  const span = Math.max(range.max - range.min, 1);
+  const parts = ticks.map((t, k) => {
+    const pos = Math.min(100, Math.max(0, ((t - range.min) / span) * 100));
+    return `${colorAt(stops, k / n)} ${pos.toFixed(2)}%`;
+  });
+  return `linear-gradient(to top, ${parts.join(", ")})`;
+}
+
 type Handle = "min" | "max";
 interface Axis {
   lo: number;
@@ -72,7 +105,7 @@ function computeAxis(sceneMin: number, sceneMax: number, range: DisplayRange | n
   return { lo: lo - pad, hi: hi + pad };
 }
 
-export function PaletteBar({ minVal, maxVal, palette, range, onRangeChange }: PaletteBarProps) {
+export function PaletteBar({ minVal, maxVal, palette, range, onRangeChange, equalized, ticks }: PaletteBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ handle: Handle; axis: Axis } | null>(null);
 
@@ -87,7 +120,10 @@ export function PaletteBar({ minVal, maxVal, palette, range, onRangeChange }: Pa
   const pct = (v: number) => Math.min(100, Math.max(0, ((v - axis.lo) / span) * 100));
 
   const stops = paletteStops[palette] ?? paletteStops.ironblack;
-  const gradient = `linear-gradient(to top, ${stops.map(([c, p]) => `${c} ${p}%`).join(", ")})`;
+  const gradient =
+    equalized && ticks && ticks.length >= 2
+      ? equalizedGradient(stops, ticks, active)
+      : `linear-gradient(to top, ${stops.map(([c, p]) => `${c} ${p}%`).join(", ")})`;
   const colorLo = stops[0][0];
   const colorHi = stops[stops.length - 1][0];
 
@@ -145,6 +181,7 @@ export function PaletteBar({ minVal, maxVal, palette, range, onRangeChange }: Pa
     e.preventDefault();
     setLimit(handle, active[handle] + delta, active);
   };
+
 
   const manual = range !== null;
   const pLo = pct(active.min);

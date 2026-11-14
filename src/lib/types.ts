@@ -8,6 +8,11 @@ export interface FrameEvent {
   max_pos: number;
   reference_ready: boolean;
   recording_reference: boolean;
+  raw: string; // base64 raw Y16 LE of the displayed frame, sensor resolution
+  raw_width: number;
+  raw_height: number;
+  hold_frames: number; // peak hold: frames accumulated (0 = off)
+  scale_ticks: number[]; // raw values at every 1/16 of the color scale (17 points)
 }
 
 export interface DeviceInfo {

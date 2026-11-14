@@ -5,7 +5,15 @@ use std::sync::{
 
 use parking_lot::Mutex;
 
-use crate::processing::{self, diff::{Reference, ReferenceRecorder}, palettes::Palette, upscale::Upscaler, FrameResult};
+use crate::processing::{
+    self,
+    autogain::Contrast,
+    diff::{Reference, ReferenceRecorder},
+    hold::{Hold, HoldMode},
+    palettes::Palette,
+    upscale::Upscaler,
+    FrameResult,
+};
 use crate::usb_stream::UsbStream;
 
 use super::types::*;
@@ -21,6 +29,10 @@ pub struct CameraAcquisition {
     display_range: Arc<AtomicU32>,
     /// Difference mode (reference frame + settings).
     diff: Arc<Mutex<DiffState>>,
+    /// Peak hold (max/min per pixel since start).
+    hold: Arc<Mutex<Hold>>,
+    /// Plateau histogram equalization instead of a linear stretch.
+    equalize: Arc<AtomicBool>,
     /// Neural network upscaler (None = disabled).
     upscaler: Arc<Mutex<Option<Upscaler>>>,
     /// Whether upscaling is enabled by the user.
@@ -39,6 +51,8 @@ impl CameraAcquisition {
             isotherm_raw: Arc::new(AtomicU16::new(0)),
             display_range: Arc::new(AtomicU32::new(0)),
             diff: Arc::new(Mutex::new(DiffState::default())),
+            hold: Arc::new(Mutex::new(Hold::default())),
+            equalize: Arc::new(AtomicBool::new(false)),
             upscaler: Arc::new(Mutex::new(None)),
             upscale_enabled: Arc::new(AtomicBool::new(false)),
         }
@@ -54,6 +68,21 @@ impl CameraAcquisition {
 
     pub fn set_isotherm_raw(&self, threshold: u16) {
         self.isotherm_raw.store(threshold, Ordering::Relaxed);
+    }
+
+    /// Linear stretch (false) or plateau histogram equalization (true).
+    pub fn set_equalize(&self, on: bool) {
+        self.equalize.store(on, Ordering::Relaxed);
+    }
+
+    /// Peak hold off / max / min. Changing the mode restarts the hold.
+    pub fn set_hold_mode(&self, mode: HoldMode) {
+        self.hold.lock().set_mode(mode);
+    }
+
+    /// Restart the peak hold from the next frame.
+    pub fn reset_hold(&self) {
+        self.hold.lock().reset();
     }
 
     /// Fix the color mapping to raw Y16 `lo..hi`. `None` (or lo >= hi) = auto.
@@ -122,6 +151,8 @@ impl CameraAcquisition {
         let upscaler = self.upscaler.clone();
         let upscale_enabled = self.upscale_enabled.clone();
         let diff = self.diff.clone();
+        let hold = self.hold.clone();
+        let equalize = self.equalize.clone();
 
         self.stream.start_stream(move |y16_data, width, height| {
             let current_palette = *palette.lock();
@@ -162,6 +193,20 @@ impl CameraAcquisition {
                 _ => None,
             };
 
+            // Peak hold: the held frame replaces the live one for everything that
+            // follows (colors, stats, markers, pointer readout, difference view).
+            let mut hold_guard = hold.lock();
+            let held = hold_guard.apply(y16_data, w, h);
+            let hold_frames = hold_guard.frames();
+            drop(hold_guard);
+            let frame: &[u8] = held.as_deref().unwrap_or(y16_data);
+
+            let contrast = if equalize.load(Ordering::Relaxed) {
+                Contrast::Equalized
+            } else {
+                Contrast::Linear
+            };
+
             let mut up_guard = upscaler.lock();
             let up_ref = if upscale_enabled.load(Ordering::Relaxed) {
                 up_guard.as_mut()
@@ -170,13 +215,14 @@ impl CameraAcquisition {
             };
 
             let mut result = processing::process_frame(
-                y16_data,
+                frame,
                 w,
                 h,
                 current_palette,
                 invert,
                 iso,
                 range,
+                contrast,
                 diff_params,
                 up_ref,
             );
@@ -184,6 +230,7 @@ impl CameraAcquisition {
             drop(diff_guard);
             result.reference_ready = reference_ready;
             result.recording_reference = recording;
+            result.hold_frames = hold_frames;
             on_frame(result);
         })?;
 

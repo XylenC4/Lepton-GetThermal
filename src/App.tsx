@@ -7,6 +7,11 @@ import { SpotmeterOverlay } from "./components/SpotmeterOverlay";
 import { MarkersOverlay } from "./components/MarkersOverlay";
 import { DiffControls, DiffSettings, DEFAULT_DIFF, REFERENCE_FRAMES } from "./components/DiffControls";
 import { DiffLegend } from "./components/DiffLegend";
+import { PeakHoldControls, ContrastMode, HoldMode } from "./components/ImageModeControls";
+import { ViewControls, IsothermControls } from "./components/VideoControls";
+import { DeviceInfo } from "./components/DeviceInfo";
+import { ThemeSwitcher } from "./components/ThemeSwitcher";
+import { HoverReadout } from "./components/HoverReadout";
 import { useCamera } from "./hooks/useCamera";
 import { useTheme } from "./hooks/useTheme";
 import { FrameStats } from "./hooks/useFrameStream";
@@ -17,19 +22,41 @@ function App() {
   const camera = useCamera();
   const theme = useTheme();
   const [palette, setPalette] = useState<Palette>("ironblack");
-  const [frameStats, setFrameStats] = useState<FrameStats>({ minVal: 0, maxVal: 0, minPos: 0, maxPos: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, referenceReady: false, recordingReference: false });
+  const [frameStats, setFrameStats] = useState<FrameStats>({
+    minVal: 0, maxVal: 0, minPos: 0, maxPos: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT,
+    referenceReady: false, recordingReference: false, holdFrames: 0, scaleTicks: [], raw: null,
+  });
   const [showMarkers, setShowMarkers] = useState(false);
   const [upscaleEnabled, setUpscaleEnabled] = useState(false);
   const [displayRange, setDisplayRange] = useState<DisplayRange | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
-  // Push the scale limits to the backend; re-sent after a reconnect (backend starts in auto).
+  // Contrast mode and peak hold; like the other settings, re-sent after a reconnect.
+  const [contrast, setContrast] = useState<ContrastMode>("linear");
+  const [hold, setHold] = useState<HoldMode>("off");
   const isStreamingNow = camera.state === "streaming";
+  const { setContrastMode: sendContrast, setHoldMode: sendHold, resetHold } = camera;
+  useEffect(() => {
+    if (isStreamingNow) sendContrast(contrast).catch(() => {});
+  }, [isStreamingNow, contrast, sendContrast]);
+  useEffect(() => {
+    if (isStreamingNow) sendHold(hold).catch(() => {});
+  }, [isStreamingNow, hold, sendHold]);
+
+  // Push the scale limits to the backend; re-sent after a reconnect (backend starts in auto).
+  // Applies to both contrast modes (equalization then runs within the range).
   const sendDisplayRange = camera.setDisplayRange;
   useEffect(() => {
     if (!isStreamingNow) return;
     sendDisplayRange(displayRange?.min ?? null, displayRange?.max ?? null).catch(() => {});
   }, [isStreamingNow, displayRange, sendDisplayRange]);
+
+  // Temperature under the pointer.
+  const [pointer, setPointer] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const handlePointerMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setPointer({ x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height });
+  }, []);
 
   // Difference mode. Settings in °C, sent in raw units (TLinear 0.01 K or 0.1 K).
   const [diff, setDiff] = useState<DiffSettings>(DEFAULT_DIFF);
@@ -129,31 +156,54 @@ function App() {
   return (
     <div className="app">
       <ControlPanel
-        deviceInfo={camera.deviceInfo}
-        currentPalette={palette}
-        onPaletteChange={handlePaletteChange}
-        onFfc={camera.performFfc}
-        onPolarityChange={handlePolarityChange}
-        onIsothermChange={handleIsothermChange}
-        onCapture={handleCapture}
-        showMarkers={showMarkers}
-        onToggleMarkers={() => setShowMarkers((v) => !v)}
-        upscaleEnabled={upscaleEnabled}
-        onToggleUpscale={handleUpscaleToggle}
-        streaming={isStreaming}
-        themeMode={theme.mode}
-        onThemeChange={theme.setMode}
-      >
-        <DiffControls
-          settings={diff}
-          onChange={setDiff}
-          onRecord={handleRecordReference}
-          onClear={handleClearReference}
-          referenceReady={isStreaming && frameStats.referenceReady}
-          recording={isStreaming && frameStats.recordingReference}
-          streaming={isStreaming}
-        />
-      </ControlPanel>
+        badges={{ analyze: hold !== "off" || diffActive }}
+        view={
+          <ViewControls
+            currentPalette={palette}
+            onPaletteChange={handlePaletteChange}
+            onPolarityChange={handlePolarityChange}
+            contrast={contrast}
+            onContrastChange={setContrast}
+            showMarkers={showMarkers}
+            onToggleMarkers={() => setShowMarkers((v) => !v)}
+            upscaleEnabled={upscaleEnabled}
+            onToggleUpscale={handleUpscaleToggle}
+            onCapture={handleCapture}
+            streaming={isStreaming}
+          />
+        }
+        analyze={
+          <>
+            <PeakHoldControls
+              hold={hold}
+              onHoldChange={setHold}
+              onHoldReset={() => resetHold().catch(() => {})}
+              holdFrames={frameStats.holdFrames}
+            />
+            <DiffControls
+              settings={diff}
+              onChange={setDiff}
+              onRecord={handleRecordReference}
+              onClear={handleClearReference}
+              referenceReady={isStreaming && frameStats.referenceReady}
+              recording={isStreaming && frameStats.recordingReference}
+              streaming={isStreaming}
+            />
+            <IsothermControls onIsothermChange={handleIsothermChange} />
+          </>
+        }
+        device={
+          <>
+            <DeviceInfo info={camera.deviceInfo} />
+            <div className="control-section">
+              <button onClick={camera.performFfc} className="ffc-button" title="Flat-field correction (shutter click)">
+                Run FFC
+              </button>
+            </div>
+            <ThemeSwitcher mode={theme.mode} onChange={theme.setMode} />
+          </>
+        }
+      />
       <main className="video-area">
         {(camera.state === "disconnected" || isConnecting) && (
           <button
@@ -173,7 +223,12 @@ function App() {
           </button>
         )}
         {camera.error && <div className="error" onClick={() => camera.clearError()} style={{ cursor: "pointer" }}>{camera.error}</div>}
-        <div className="video-container" ref={videoContainerRef}>
+        <div
+          className="video-container"
+          ref={videoContainerRef}
+          onMouseMove={handlePointerMove}
+          onMouseLeave={() => setPointer(null)}
+        >
           <VideoCanvas
             streaming={isStreaming}
             onStats={handleStats}
@@ -197,12 +252,23 @@ function App() {
               onRoiChange={handleRoiChange}
             />
           )}
+          {isStreaming && showRadiometry && (
+            <HoverReadout
+              pointer={pointer}
+              containerW={pointer?.w ?? 0}
+              containerH={pointer?.h ?? 0}
+              raw={frameStats.raw}
+              tag={hold === "max" ? "max" : hold === "min" ? "min" : undefined}
+            />
+          )}
         </div>
         {isStreaming && (
           <div className="status-bar">
             <div className="status-indicator">
               <div className="status-dot live" />
               <span>LIVE</span>
+              {hold !== "off" && <span className="status-badge">{hold.toUpperCase()} HOLD</span>}
+              {contrast === "equalized" && <span className="status-badge">HEQ</span>}
             </div>
             <span>{frameStats.width}x{frameStats.height}</span>
           </div>
@@ -225,6 +291,8 @@ function App() {
               palette={palette}
               range={displayRange}
               onRangeChange={setDisplayRange}
+              equalized={contrast === "equalized"}
+              ticks={frameStats.scaleTicks}
             />
           )}
         </aside>

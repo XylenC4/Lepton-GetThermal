@@ -85,6 +85,18 @@ export function useCamera() {
     []
   );
 
+  const setContrastMode = useCallback(async (mode: "linear" | "equalized") => {
+    await invoke("set_contrast_mode", { mode });
+  }, []);
+
+  const setHoldMode = useCallback(async (mode: "off" | "max" | "min") => {
+    await invoke("set_hold_mode", { mode });
+  }, []);
+
+  const resetHold = useCallback(async () => {
+    await invoke("reset_hold");
+  }, []);
+
   const setUpscale = useCallback(async (enabled: boolean) => {
     try {
       await invoke("set_upscale", { enabled });
@@ -134,6 +146,9 @@ export function useCamera() {
     recordReference,
     clearReference,
     setDiffMode,
+    setContrastMode,
+    setHoldMode,
+    resetHold,
     clearError,
     getSpotTemperature,
     setSpotmeterRoi,

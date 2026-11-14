@@ -1,33 +1,92 @@
 import { useState } from "react";
 import { Palette } from "../lib/types";
+import { Segmented, ContrastMode } from "./ImageModeControls";
 
-interface VideoControlsProps {
+interface ViewControlsProps {
+  currentPalette: Palette;
   onPaletteChange: (palette: Palette) => void;
-  onFfc: () => void;
   onPolarityChange: (polarity: number) => void;
-  onIsothermChange: (tempC: number | null) => void;
-  onCapture: () => void;
+  contrast: ContrastMode;
+  onContrastChange: (m: ContrastMode) => void;
   showMarkers: boolean;
   onToggleMarkers: () => void;
   upscaleEnabled: boolean;
   onToggleUpscale: () => void;
-  currentPalette: Palette;
+  onCapture: () => void;
   streaming: boolean;
 }
 
-export function VideoControls({
+/** "View" tab: how the image looks. */
+export function ViewControls({
+  currentPalette,
   onPaletteChange,
-  onFfc,
   onPolarityChange,
-  onIsothermChange,
-  onCapture,
+  contrast,
+  onContrastChange,
   showMarkers,
   onToggleMarkers,
   upscaleEnabled,
   onToggleUpscale,
-  currentPalette,
+  onCapture,
   streaming,
-}: VideoControlsProps) {
+}: ViewControlsProps) {
+  return (
+    <div className="control-section">
+      <label>
+        Palette
+        <select value={currentPalette} onChange={(e) => onPaletteChange(e.target.value as Palette)}>
+          <option value="ironblack">Iron Black</option>
+          <option value="rainbow">Rainbow</option>
+          <option value="grayscale">Grayscale</option>
+        </select>
+      </label>
+      <label>
+        Polarity
+        <select onChange={(e) => onPolarityChange(Number(e.target.value))}>
+          <option value={0}>White Hot</option>
+          <option value={1}>Black Hot</option>
+        </select>
+      </label>
+      <label>
+        Contrast
+        <Segmented
+          label="Contrast"
+          value={contrast}
+          onChange={onContrastChange}
+          options={[
+            { value: "linear", label: "Linear", title: "Colors evenly spread from coldest to hottest" },
+            {
+              value: "equalized",
+              label: "Equalized",
+              title:
+                "Histogram equalization: colors follow the temperatures that occur, so one hot object doesn't flatten the rest",
+            },
+          ]}
+        />
+      </label>
+      <label className="toggle">
+        <input type="checkbox" checked={showMarkers} onChange={onToggleMarkers} />
+        Min/Max markers
+      </label>
+      <label className="toggle">
+        <input type="checkbox" checked={upscaleEnabled} onChange={onToggleUpscale} />
+        SR Upscale (3x)
+      </label>
+      {streaming && (
+        <button onClick={onCapture} className="ffc-button">
+          Capture
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface IsothermControlsProps {
+  onIsothermChange: (tempC: number | null) => void;
+}
+
+/** Isotherm: stripe everything above a temperature. */
+export function IsothermControls({ onIsothermChange }: IsothermControlsProps) {
   const [isothermEnabled, setIsothermEnabled] = useState(false);
   const [isothermTemp, setIsothermTemp] = useState(35);
 
@@ -45,81 +104,27 @@ export function VideoControls({
   };
 
   return (
-    <>
-      <div className="control-section">
-        <h3>Imaging</h3>
+    <div className="control-section">
+      <h3>Isotherm</h3>
+      <label className="toggle">
+        <input type="checkbox" checked={isothermEnabled} onChange={handleIsothermToggle} />
+        Stripe above threshold
+      </label>
+      {isothermEnabled && (
         <label>
-          Palette
-          <select
-            value={currentPalette}
-            onChange={(e) => onPaletteChange(e.target.value as Palette)}
-          >
-            <option value="ironblack">Iron Black</option>
-            <option value="rainbow">Rainbow</option>
-            <option value="grayscale">Grayscale</option>
-          </select>
+          Threshold
+          <div className="slider-row">
+            <input
+              type="range"
+              min={-20}
+              max={150}
+              value={isothermTemp}
+              onChange={(e) => handleIsothermTemp(Number(e.target.value))}
+            />
+            <span>{isothermTemp}&deg;C</span>
+          </div>
         </label>
-        <label>
-          Polarity
-          <select onChange={(e) => onPolarityChange(Number(e.target.value))}>
-            <option value={0}>White Hot</option>
-            <option value={1}>Black Hot</option>
-          </select>
-        </label>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={showMarkers}
-            onChange={onToggleMarkers}
-          />
-          Min/Max markers
-        </label>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={upscaleEnabled}
-            onChange={onToggleUpscale}
-          />
-          SR Upscale (3x)
-        </label>
-        <button onClick={onFfc} className="ffc-button">
-          Run FFC
-        </button>
-        {streaming && (
-          <button onClick={onCapture} className="ffc-button">
-            Capture
-          </button>
-        )}
-      </div>
-      <div className="control-section">
-        <h3>Isotherm</h3>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={isothermEnabled}
-            onChange={handleIsothermToggle}
-          />
-          Enable
-        </label>
-        {isothermEnabled && (
-          <label>
-            Threshold
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="range"
-                min={-20}
-                max={150}
-                value={isothermTemp}
-                onChange={(e) => handleIsothermTemp(Number(e.target.value))}
-                style={{ flex: 1 }}
-              />
-              <span style={{ minWidth: 42, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {isothermTemp}&deg;C
-              </span>
-            </div>
-          </label>
-        )}
-      </div>
-    </>
+      )}
+    </div>
   );
 }

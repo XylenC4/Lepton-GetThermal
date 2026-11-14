@@ -11,6 +11,29 @@ export interface FrameStats {
   height: number;
   referenceReady: boolean;
   recordingReference: boolean;
+  /** Peak hold: frames accumulated (0 = off). */
+  holdFrames: number;
+  /** Raw values at every 1/16 of the color scale (non-linear with HEQ). */
+  scaleTicks: number[];
+  /** Raw Y16 of the displayed frame (live or held), for the pointer readout. */
+  raw: RawFrame | null;
+}
+
+export interface RawFrame {
+  data: Uint16Array;
+  width: number;
+  height: number;
+}
+
+function decodeRaw(b64: string, width: number, height: number): RawFrame | null {
+  if (!b64 || width * height === 0) return null;
+  const bin = atob(b64);
+  const n = Math.min(width * height, bin.length >> 1);
+  const data = new Uint16Array(n);
+  for (let i = 0; i < n; i++) {
+    data[i] = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+  }
+  return { data, width, height };
 }
 
 export function useFrameStream(
@@ -38,7 +61,10 @@ export function useFrameStream(
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      const { data, width, height, min_val, max_val, min_pos, max_pos, reference_ready, recording_reference } = event.payload;
+      const {
+        data, width, height, min_val, max_val, min_pos, max_pos, reference_ready, recording_reference,
+        raw, raw_width, raw_height, hold_frames, scale_ticks,
+      } = event.payload;
 
       resetWatchdog();
 
@@ -64,6 +90,8 @@ export function useFrameStream(
       onStats?.({
         minVal: min_val, maxVal: max_val, minPos: min_pos, maxPos: max_pos, width, height,
         referenceReady: reference_ready, recordingReference: recording_reference,
+        holdFrames: hold_frames, scaleTicks: scale_ticks,
+        raw: decodeRaw(raw, raw_width, raw_height),
       });
     });
 

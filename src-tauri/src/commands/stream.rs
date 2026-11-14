@@ -21,6 +21,14 @@ struct FrameEvent {
     max_pos: usize,
     reference_ready: bool,
     recording_reference: bool,
+    /// Raw Y16 (LE, base64) of the displayed frame, sensor resolution: pointer readout.
+    raw: String,
+    raw_width: usize,
+    raw_height: usize,
+    /// Peak hold: frames accumulated (0 = off).
+    hold_frames: u32,
+    /// Raw values at every 1/16 of the color scale (non-linear with HEQ).
+    scale_ticks: [u16; crate::processing::autogain::SCALE_TICKS],
 }
 
 #[tauri::command]
@@ -92,6 +100,11 @@ pub fn start_stream(app: AppHandle, state: State<'_, AppState>) -> Result<(), St
             max_pos: frame_result.stats.max_pos,
             reference_ready: frame_result.reference_ready,
             recording_reference: frame_result.recording_reference,
+            raw: BASE64.encode(&frame_result.raw_y16),
+            raw_width: frame_result.sensor_width,
+            raw_height: frame_result.sensor_height,
+            hold_frames: frame_result.hold_frames,
+            scale_ticks: frame_result.stats.scale_ticks,
         };
         let _ = app.emit("thermal-frame", event);
     })
@@ -194,5 +207,43 @@ pub fn set_diff_mode(
     let cam_guard = state.camera.lock();
     let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
     cam.set_diff(enabled, threshold_raw, warm_full_raw, cold_full_raw);
+    Ok(())
+}
+
+/// Contrast: "linear" (stretch) or "equalized" (plateau histogram equalization).
+#[tauri::command]
+pub fn set_contrast_mode(state: State<'_, AppState>, mode: String) -> Result<(), String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    match mode.as_str() {
+        "linear" => cam.set_equalize(false),
+        "equalized" => cam.set_equalize(true),
+        _ => return Err(format!("Unknown contrast mode: {mode}")),
+    }
+    Ok(())
+}
+
+/// Peak hold: "off", "max" (hottest value per pixel) or "min" (coldest).
+#[tauri::command]
+pub fn set_hold_mode(state: State<'_, AppState>, mode: String) -> Result<(), String> {
+    use crate::processing::hold::HoldMode;
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    let m = match mode.as_str() {
+        "off" => HoldMode::Off,
+        "max" => HoldMode::Max,
+        "min" => HoldMode::Min,
+        _ => return Err(format!("Unknown hold mode: {mode}")),
+    };
+    cam.set_hold_mode(m);
+    Ok(())
+}
+
+/// Peak hold: start accumulating again from the next frame.
+#[tauri::command]
+pub fn reset_hold(state: State<'_, AppState>) -> Result<(), String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    cam.reset_hold();
     Ok(())
 }
