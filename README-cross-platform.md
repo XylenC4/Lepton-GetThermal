@@ -8,7 +8,7 @@ It has the same `UsbStream` API, so the rest of the app is unchanged.
 |---|---|---|
 | macOS | IOKit (`usb_stream_iokit.rs`, unchanged) | as upstream |
 | Linux | libusb (vendored 1.0.27) | tested with PureThermal fw 1.3.0 + Lepton 3.5 |
-| Windows x64 | libusb, needs WinUSB driver (Zadig) | cross-compiled from Linux |
+| Windows x64 | libusb, needs WinUSB driver (Zadig) | tested (Windows 11, Lepton 3.5); native or cross-compiled build |
 | Android | libusb via `UsbStream::open_fd()` (`libusb_wrap_sys_device`) | prepared, not built yet |
 
 ## Windows
@@ -33,7 +33,32 @@ which Microsoft allows to be shipped alongside an app.
 The WebView2 cache goes to `webview-data/` next to the exe if that folder is writable.
 WebView2 itself comes with Windows 11 and current Windows 10.
 
-### Building on Linux
+### Building on Windows (native)
+
+Prerequisites:
+- Visual Studio 2022 Build Tools, with the *Desktop development with C++* workload and a
+  Windows 11 SDK;
+- [rustup](https://rustup.rs), with the `stable-x86_64-pc-windows-msvc` toolchain;
+- Node.js LTS.
+
+Then:
+
+```powershell
+npm ci
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1              # portable zip
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 -Installer   # + NSIS setup.exe
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 -Debug       # debug exe only
+```
+
+The zip is written to `src-tauri\target\release\portable\`. The script stages the runtime DLLs
+in `src-tauri\windows-libs\`.
+
+On machines with little memory, especially VMs without a pagefile, parallel `rustc` jobs run
+out of memory. The failures look like compiler bugs: ICEs, "import resolution is stuck",
+0xc0000409. The script therefore caps `CARGO_BUILD_JOBS` at 1 job per 4 GB of commit limit;
+set the variable yourself to override this.
+
+### Building on Linux (cross-compile for Windows)
 
 ```bash
 sudo apt install clang lld llvm cabextract          # + nsis for --installer
@@ -60,6 +85,26 @@ Hardware test (camera attached):
 ```bash
 cd src-tauri && cargo test --lib hw_ -- --ignored --nocapture
 ```
+
+## Viewer features added in this fork
+
+All platforms:
+
+- **Themes:** *Auto / Light / Dark* switch at the bottom of the left panel. *Auto* follows the
+  OS theme; the choice is remembered, and the window title bar follows it.
+- **Temperature range on the scale:** drag the two handles on the color scale (right panel) to
+  fix the range. Pixels outside it clip to the end colors, and dashed marks show the scene's
+  real min/max. Clicking the bar moves the nearest handle; arrow keys move a selected handle
+  0.1 °C, or 1 °C with Shift. Double-click the scale or press *Auto* to go back to the
+  automatic range.
+- **Difference mode** (*Difference* section in the left panel): *Record reference* stores each
+  pixel's **minimum and maximum** over 16 frames (~2 s); that range is the pixel's own noise.
+  - With *Show only changes* on, only pixels that leave that range are colored: warmer in
+    red → yellow, colder in blue → cyan. The rest of the scene stays as a dimmed grayscale.
+  - The scale on the right then has three handles: full color for warming, full color for
+    cooling, and the extra noise margin.
+  - The comparison runs on the raw radiometric data in Rust (`processing/diff.rs`). The spot
+    temperature and the min/max values stay real temperatures.
 
 ## Fixes that also affect macOS
 
