@@ -6,6 +6,8 @@ export interface FrameEvent {
   max_val: number;
   min_pos: number;
   max_pos: number;
+  reference_ready: boolean;
+  recording_reference: boolean;
 }
 
 export interface DeviceInfo {

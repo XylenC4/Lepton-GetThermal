@@ -1,22 +1,61 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { VideoCanvas } from "./components/VideoCanvas";
 import { ControlPanel } from "./components/ControlPanel";
 import { TemperatureDisplay } from "./components/TemperatureDisplay";
-import { PaletteBar } from "./components/PaletteBar";
+import { PaletteBar, DisplayRange } from "./components/PaletteBar";
 import { SpotmeterOverlay } from "./components/SpotmeterOverlay";
 import { MarkersOverlay } from "./components/MarkersOverlay";
+import { DiffControls, DiffSettings, DEFAULT_DIFF, REFERENCE_FRAMES } from "./components/DiffControls";
+import { DiffLegend } from "./components/DiffLegend";
 import { useCamera } from "./hooks/useCamera";
+import { useTheme } from "./hooks/useTheme";
 import { FrameStats } from "./hooks/useFrameStream";
 import { Palette, DEFAULT_WIDTH, DEFAULT_HEIGHT } from "./lib/types";
 import "./App.css";
 
 function App() {
   const camera = useCamera();
+  const theme = useTheme();
   const [palette, setPalette] = useState<Palette>("ironblack");
-  const [frameStats, setFrameStats] = useState<FrameStats>({ minVal: 0, maxVal: 0, minPos: 0, maxPos: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+  const [frameStats, setFrameStats] = useState<FrameStats>({ minVal: 0, maxVal: 0, minPos: 0, maxPos: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, referenceReady: false, recordingReference: false });
   const [showMarkers, setShowMarkers] = useState(false);
   const [upscaleEnabled, setUpscaleEnabled] = useState(false);
+  const [displayRange, setDisplayRange] = useState<DisplayRange | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  // Push the scale limits to the backend; re-sent after a reconnect (backend starts in auto).
+  const isStreamingNow = camera.state === "streaming";
+  const sendDisplayRange = camera.setDisplayRange;
+  useEffect(() => {
+    if (!isStreamingNow) return;
+    sendDisplayRange(displayRange?.min ?? null, displayRange?.max ?? null).catch(() => {});
+  }, [isStreamingNow, displayRange, sendDisplayRange]);
+
+  // Difference mode. Settings in °C, sent in raw units (TLinear 0.01 K or 0.1 K).
+  const [diff, setDiff] = useState<DiffSettings>(DEFAULT_DIFF);
+  const rawPerDegree = frameStats.maxVal > 0 && frameStats.maxVal <= 10000 ? 10 : 100;
+  const sendDiff = camera.setDiffMode;
+  useEffect(() => {
+    if (!isStreamingNow) return;
+    sendDiff(
+      diff.enabled,
+      diff.thresholdC * rawPerDegree,
+      diff.warmC * rawPerDegree,
+      diff.coldC * rawPerDegree
+    ).catch(() => {});
+  }, [isStreamingNow, diff, rawPerDegree, sendDiff]);
+
+  const handleRecordReference = useCallback(() => {
+    camera.recordReference(REFERENCE_FRAMES).catch(() => {});
+    setDiff((d) => ({ ...d, enabled: true }));
+  }, [camera.recordReference]);
+
+  const handleClearReference = useCallback(() => {
+    camera.clearReference().catch(() => {});
+    setDiff((d) => ({ ...d, enabled: false }));
+  }, [camera.clearReference]);
+
+  const diffActive = diff.enabled && frameStats.referenceReady;
 
   const handleCapture = useCallback(() => {
     const canvas = videoContainerRef.current?.querySelector("canvas");
@@ -102,7 +141,19 @@ function App() {
         upscaleEnabled={upscaleEnabled}
         onToggleUpscale={handleUpscaleToggle}
         streaming={isStreaming}
-      />
+        themeMode={theme.mode}
+        onThemeChange={theme.setMode}
+      >
+        <DiffControls
+          settings={diff}
+          onChange={setDiff}
+          onRecord={handleRecordReference}
+          onClear={handleClearReference}
+          referenceReady={isStreaming && frameStats.referenceReady}
+          recording={isStreaming && frameStats.recordingReference}
+          streaming={isStreaming}
+        />
+      </ControlPanel>
       <main className="video-area">
         {(camera.state === "disconnected" || isConnecting) && (
           <button
@@ -165,11 +216,17 @@ function App() {
               streaming={isStreaming}
             />
           )}
-          <PaletteBar
-            minVal={frameStats.minVal}
-            maxVal={frameStats.maxVal}
-            palette={palette}
-          />
+          {diffActive ? (
+            <DiffLegend settings={diff} onChange={setDiff} />
+          ) : (
+            <PaletteBar
+              minVal={frameStats.minVal}
+              maxVal={frameStats.maxVal}
+              palette={palette}
+              range={displayRange}
+              onRangeChange={setDisplayRange}
+            />
+          )}
         </aside>
       )}
     </div>

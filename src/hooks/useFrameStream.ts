@@ -9,6 +9,8 @@ export interface FrameStats {
   maxPos: number;
   width: number;
   height: number;
+  referenceReady: boolean;
+  recordingReference: boolean;
 }
 
 export function useFrameStream(
@@ -36,7 +38,7 @@ export function useFrameStream(
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      const { data, width, height, min_val, max_val, min_pos, max_pos } = event.payload;
+      const { data, width, height, min_val, max_val, min_pos, max_pos, reference_ready, recording_reference } = event.payload;
 
       resetWatchdog();
 
@@ -59,7 +61,10 @@ export function useFrameStream(
       const imageData = new ImageData(bytes, width, height);
       ctx.putImageData(imageData, 0, 0);
 
-      onStats?.({ minVal: min_val, maxVal: max_val, minPos: min_pos, maxPos: max_pos, width, height });
+      onStats?.({
+        minVal: min_val, maxVal: max_val, minPos: min_pos, maxPos: max_pos, width, height,
+        referenceReady: reference_ready, recordingReference: recording_reference,
+      });
     });
 
     resetWatchdog();

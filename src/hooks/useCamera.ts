@@ -63,6 +63,28 @@ export function useCamera() {
     await invoke("set_isotherm", { rawThreshold });
   }, []);
 
+  /** Fix the color mapping to raw Y16 min..max; null = automatic. */
+  const setDisplayRange = useCallback(async (minRaw: number | null, maxRaw: number | null) => {
+    await invoke("set_display_range", { minRaw, maxRaw });
+  }, []);
+
+  /** Difference mode: record each pixel's min/max over `frames` as reference. */
+  const recordReference = useCallback(async (frames = 16) => {
+    await invoke("record_reference", { frames });
+  }, []);
+
+  const clearReference = useCallback(async () => {
+    await invoke("clear_reference");
+  }, []);
+
+  /** Difference mode settings, in raw Y16 units. */
+  const setDiffMode = useCallback(
+    async (enabled: boolean, thresholdRaw: number, warmFullRaw: number, coldFullRaw: number) => {
+      await invoke("set_diff_mode", { enabled, thresholdRaw, warmFullRaw, coldFullRaw });
+    },
+    []
+  );
+
   const setUpscale = useCallback(async (enabled: boolean) => {
     try {
       await invoke("set_upscale", { enabled });
@@ -108,6 +130,10 @@ export function useCamera() {
     performFfc,
     setPolarity,
     setIsotherm,
+    setDisplayRange,
+    recordReference,
+    clearReference,
+    setDiffMode,
     clearError,
     getSpotTemperature,
     setSpotmeterRoi,

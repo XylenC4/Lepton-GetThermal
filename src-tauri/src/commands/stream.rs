@@ -19,6 +19,8 @@ struct FrameEvent {
     max_val: u16,
     min_pos: usize,
     max_pos: usize,
+    reference_ready: bool,
+    recording_reference: bool,
 }
 
 #[tauri::command]
@@ -88,6 +90,8 @@ pub fn start_stream(app: AppHandle, state: State<'_, AppState>) -> Result<(), St
             max_val: frame_result.stats.max_val,
             min_pos: frame_result.stats.min_pos,
             max_pos: frame_result.stats.max_pos,
+            reference_ready: frame_result.reference_ready,
+            recording_reference: frame_result.recording_reference,
         };
         let _ = app.emit("thermal-frame", event);
     })
@@ -133,6 +137,20 @@ pub fn set_isotherm(state: State<'_, AppState>, raw_threshold: u16) -> Result<()
     Ok(())
 }
 
+/// Fix the color mapping to raw Y16 `min_raw..max_raw`. Pass null for either
+/// value (or min >= max) to return to automatic per-frame min/max.
+#[tauri::command]
+pub fn set_display_range(
+    state: State<'_, AppState>,
+    min_raw: Option<u16>,
+    max_raw: Option<u16>,
+) -> Result<(), String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    cam.set_display_range(min_raw.zip(max_raw));
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_upscale(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
     eprintln!("[lepton-getthermal] set_upscale called: enabled={enabled}");
@@ -140,5 +158,41 @@ pub fn set_upscale(state: State<'_, AppState>, enabled: bool) -> Result<(), Stri
     let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
     cam.set_upscale(enabled);
     eprintln!("[lepton-getthermal] set_upscale done");
+    Ok(())
+}
+
+/// Difference mode: record a reference = per-pixel min/max over `frames` (default 16).
+#[tauri::command]
+pub fn record_reference(state: State<'_, AppState>, frames: Option<u32>) -> Result<(), String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    let n = frames.unwrap_or(16).clamp(1, 128);
+    eprintln!("[lepton-getthermal] Recording reference ({n} frames)");
+    cam.record_reference(n);
+    Ok(())
+}
+
+/// Difference mode: forget the reference frame.
+#[tauri::command]
+pub fn clear_reference(state: State<'_, AppState>) -> Result<(), String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    cam.clear_reference();
+    Ok(())
+}
+
+/// Difference mode on/off and its scale, in raw Y16 units
+/// (TLinear 0.01 K: 100 = 1 degree).
+#[tauri::command]
+pub fn set_diff_mode(
+    state: State<'_, AppState>,
+    enabled: bool,
+    threshold_raw: f32,
+    warm_full_raw: f32,
+    cold_full_raw: f32,
+) -> Result<(), String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    cam.set_diff(enabled, threshold_raw, warm_full_raw, cold_full_raw);
     Ok(())
 }

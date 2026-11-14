@@ -1,5 +1,8 @@
+import type { ReactNode } from "react";
 import { VideoControls } from "./VideoControls";
 import { DeviceInfo } from "./DeviceInfo";
+import { ThemeSwitcher } from "./ThemeSwitcher";
+import { ThemeMode } from "../hooks/useTheme";
 import { Palette, DeviceInfo as DeviceInfoType } from "../lib/types";
 
 interface ControlPanelProps {
@@ -15,6 +18,10 @@ interface ControlPanelProps {
   upscaleEnabled: boolean;
   onToggleUpscale: () => void;
   streaming: boolean;
+  themeMode: ThemeMode;
+  onThemeChange: (mode: ThemeMode) => void;
+  /** Extra sections rendered below the imaging controls (e.g. Difference). */
+  children?: ReactNode;
 }
 
 export function ControlPanel({
@@ -30,6 +37,9 @@ export function ControlPanel({
   upscaleEnabled,
   onToggleUpscale,
   streaming,
+  themeMode,
+  onThemeChange,
+  children,
 }: ControlPanelProps) {
   return (
     <aside className="control-panel">
@@ -51,6 +61,10 @@ export function ControlPanel({
         onToggleUpscale={onToggleUpscale}
         streaming={streaming}
       />
+      {children}
+      <div className="panel-footer">
+        <ThemeSwitcher mode={themeMode} onChange={onThemeChange} />
+      </div>
     </aside>
   );
 }

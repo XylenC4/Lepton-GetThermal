@@ -20,7 +20,17 @@ pub struct GainResult {
 /// Applies linear auto-gain to a Y16 frame buffer.
 /// Input: raw 16-bit pixel values (little-endian u16 pairs).
 /// Output: 8-bit normalized grayscale + frame statistics.
-pub fn auto_gain(y16_data: &[u8], width: usize, height: usize) -> GainResult {
+///
+/// `range`: `None` stretches the frame's own min..max to 0..255 (auto).
+/// `Some((lo, hi))` maps the fixed raw range lo..hi to 0..255 instead; values
+/// outside it clip to 0 / 255. The reported min/max stats are always the
+/// frame's real values.
+pub fn auto_gain(
+    y16_data: &[u8],
+    width: usize,
+    height: usize,
+    range: Option<(u16, u16)>,
+) -> GainResult {
     let pixel_count = width * height;
     if pixel_count == 0 || y16_data.len() < pixel_count * 2 {
         return GainResult {
@@ -53,15 +63,20 @@ pub fn auto_gain(y16_data: &[u8], width: usize, height: usize) -> GainResult {
         }
     }
 
-    // Linear normalization to 0-255
-    let range = max_val.saturating_sub(min_val) as f64;
+    // Linear normalization to 0-255 over the auto (frame) or fixed (user) range.
+    let (lo, hi) = match range {
+        Some((a, b)) if b > a => (a, b),
+        _ => (min_val, max_val),
+    };
+    let span = hi.saturating_sub(lo) as f64;
     let grayscale = pixels
         .iter()
         .map(|&val| {
-            if range == 0.0 {
+            if span == 0.0 {
                 0u8
             } else {
-                (((val - min_val) as f64 / range) * 255.0) as u8
+                let v = val.clamp(lo, hi);
+                (((v - lo) as f64 / span) * 255.0) as u8
             }
         })
         .collect();
@@ -87,7 +102,7 @@ mod tests {
     fn auto_gain_normalizes_to_full_range() {
         // 4 pixels: min=100, max=200
         let frame = make_y16_frame(&[100, 150, 200, 100]);
-        let result = auto_gain(&frame, 2, 2);
+        let result = auto_gain(&frame, 2, 2, None);
 
         assert_eq!(result.grayscale.len(), 4);
         assert_eq!(result.grayscale[0], 0);   // min → 0
@@ -99,7 +114,7 @@ mod tests {
     #[test]
     fn auto_gain_reports_min_max() {
         let frame = make_y16_frame(&[300, 100, 500, 200]);
-        let result = auto_gain(&frame, 2, 2);
+        let result = auto_gain(&frame, 2, 2, None);
 
         assert_eq!(result.min_val, 100);
         assert_eq!(result.max_val, 500);
@@ -111,7 +126,7 @@ mod tests {
     fn auto_gain_uniform_frame() {
         // All same value → all output should be 0 (no division by zero)
         let frame = make_y16_frame(&[1000, 1000, 1000, 1000]);
-        let result = auto_gain(&frame, 2, 2);
+        let result = auto_gain(&frame, 2, 2, None);
 
         assert_eq!(result.grayscale, vec![0, 0, 0, 0]);
         assert_eq!(result.min_val, 1000);
@@ -119,8 +134,31 @@ mod tests {
     }
 
     #[test]
+    fn fixed_range_clips_and_keeps_real_stats() {
+        // Range 200..400: 100 clips to 0, 500 clips to 255, 300 is mid-scale.
+        let frame = make_y16_frame(&[100, 300, 500, 200]);
+        let result = auto_gain(&frame, 2, 2, Some((200, 400)));
+
+        assert_eq!(result.grayscale[0], 0);
+        assert!((result.grayscale[1] as i16 - 127).abs() <= 1);
+        assert_eq!(result.grayscale[2], 255);
+        assert_eq!(result.grayscale[3], 0);
+        // Stats still describe the scene, not the display range.
+        assert_eq!(result.min_val, 100);
+        assert_eq!(result.max_val, 500);
+    }
+
+    #[test]
+    fn invalid_fixed_range_falls_back_to_auto() {
+        let frame = make_y16_frame(&[100, 150, 200, 100]);
+        let auto = auto_gain(&frame, 2, 2, None);
+        assert_eq!(auto_gain(&frame, 2, 2, Some((300, 300))).grayscale, auto.grayscale);
+        assert_eq!(auto_gain(&frame, 2, 2, Some((400, 300))).grayscale, auto.grayscale);
+    }
+
+    #[test]
     fn auto_gain_empty_frame() {
-        let result = auto_gain(&[], 0, 0);
+        let result = auto_gain(&[], 0, 0, None);
         assert!(result.grayscale.is_empty());
     }
 }

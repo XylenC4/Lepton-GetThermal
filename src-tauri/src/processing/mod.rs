@@ -1,5 +1,6 @@
 pub mod autogain;
 pub mod colorize;
+pub mod diff;
 pub mod palettes;
 pub mod upscale;
 
@@ -17,12 +18,18 @@ pub struct FrameResult {
     pub height: usize,
     /// Processing statistics (always in original sensor coordinates)
     pub stats: GainResult,
+    /// Difference mode: a reference frame is stored.
+    pub reference_ready: bool,
+    /// Difference mode: a reference is being recorded right now.
+    pub recording_reference: bool,
 }
 
 /// Full processing pipeline: Y16 → auto-gain → colorize → RGBA → isotherm overlay.
 /// When `invert` is true, the grayscale is flipped (white-hot ↔ black-hot).
 /// When `isotherm_raw` > 0, pixels whose raw Y16 value exceeds the threshold
 /// get a diagonal red/white stripe pattern.
+/// `display_range`: fixed raw Y16 range for the color mapping (None = auto per frame).
+/// `diff`: when set, show only the change against a reference frame (see diff.rs).
 /// When `upscaler` is provided, the grayscale is super-resolved before colorization.
 pub fn process_frame(
     y16_data: &[u8],
@@ -31,9 +38,11 @@ pub fn process_frame(
     palette: Palette,
     invert: bool,
     isotherm_raw: u16,
+    display_range: Option<(u16, u16)>,
+    diff: Option<diff::DiffParams>,
     upscaler: Option<&mut upscale::Upscaler>,
 ) -> FrameResult {
-    let mut stats = autogain::auto_gain(y16_data, width, height);
+    let mut stats = autogain::auto_gain(y16_data, width, height, display_range);
     if invert {
         for val in stats.grayscale.iter_mut() {
             *val = 255 - *val;
@@ -57,6 +66,10 @@ pub fn process_frame(
     };
 
     let mut rgba = colorize::colorize(display_gs, palette);
+
+    if let Some(p) = diff {
+        diff::render(&mut rgba, display_gs, display_w, display_h, y16_data, width, height, p);
+    }
 
     // Apply isotherm overlay: diagonal red/white stripes blended over thermal image.
     // Maps upscaled pixel coordinates back to original Y16 data for threshold check.
@@ -88,6 +101,8 @@ pub fn process_frame(
         width: display_w,
         height: display_h,
         stats,
+        reference_ready: false,
+        recording_reference: false,
     }
 }
 
@@ -103,7 +118,7 @@ mod tests {
     fn pipeline_produces_correct_rgba_output() {
         // 2x2 frame, values 0-300
         let frame = make_y16_frame(&[0, 100, 200, 300]);
-        let result = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None);
+        let result = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None, None, None);
 
         assert_eq!(result.rgba.len(), 16); // 4 pixels * 4 RGBA
         assert_eq!(result.width, 2);
@@ -116,8 +131,8 @@ mod tests {
     #[test]
     fn isotherm_applies_stripes() {
         let frame = make_y16_frame(&[100, 200, 300, 400]);
-        let result_no_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None);
-        let result_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 250, None);
+        let result_no_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None, None, None);
+        let result_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 250, None, None, None);
 
         // Pixels 0,1 (100,200) below threshold → unchanged
         assert_eq!(&result_iso.rgba[0..8], &result_no_iso.rgba[0..8]);
