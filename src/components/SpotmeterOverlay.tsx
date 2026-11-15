@@ -1,42 +1,50 @@
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
+import { containedRect } from "../lib/measure";
+import { Rotation, displayToSensor, rotatedSize, sensorToDisplay } from "../lib/rotation";
 
 interface SpotmeterOverlayProps {
-  canvasWidth: number;
-  canvasHeight: number;
-  onRoiChange: (
-    rowStart: number,
-    colStart: number,
-    rowEnd: number,
-    colEnd: number
-  ) => void;
+  /** Spot position, sensor pixel. */
+  col: number;
+  row: number;
+  /** Sensor resolution (unrotated). */
+  sensorW: number;
+  sensorH: number;
+  rotation: Rotation;
+  containerW: number;
+  containerH: number;
+  /** New spot position, sensor pixel. */
+  onSpotChange: (col: number, row: number) => void;
 }
 
+/** Spot meter reticle; click the image to move it. */
 export function SpotmeterOverlay({
-  canvasWidth,
-  canvasHeight,
-  onRoiChange,
+  col,
+  row,
+  sensorW,
+  sensorH,
+  rotation,
+  containerW,
+  containerH,
+  onSpotChange,
 }: SpotmeterOverlayProps) {
-  const [roi, setRoi] = useState({ x: 0.5, y: 0.5 });
+  const disp = rotatedSize(sensorW, sensorH, rotation);
+  const r = containedRect(containerW || 1, containerH || 1, disp.w, disp.h);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
-      setRoi({ x, y });
-
-      const col = Math.round(x * canvasWidth);
-      const row = Math.round(y * canvasHeight);
-      const size = 2;
-      onRoiChange(
-        Math.max(0, row - size),
-        Math.max(0, col - size),
-        Math.min(canvasHeight - 1, row + size),
-        Math.min(canvasWidth - 1, col + size)
-      );
+      const box = e.currentTarget.getBoundingClientRect();
+      const u = Math.floor(((e.clientX - box.left - r.left) / r.width) * disp.w);
+      const v = Math.floor(((e.clientY - box.top - r.top) / r.height) * disp.h);
+      if (u < 0 || v < 0 || u >= disp.w || v >= disp.h) return; // outside the image
+      const s = displayToSensor(u, v, sensorW, sensorH, rotation);
+      onSpotChange(s.x, s.y);
     },
-    [canvasWidth, canvasHeight, onRoiChange]
+    [r.left, r.top, r.width, r.height, disp.w, disp.h, sensorW, sensorH, rotation, onSpotChange]
   );
+
+  const d = sensorToDisplay(col, row, sensorW, sensorH, rotation);
+  const cx = r.left + (d.x + 0.5) * r.scale;
+  const cy = r.top + (d.y + 0.5) * r.scale;
 
   return (
     <div
@@ -56,8 +64,8 @@ export function SpotmeterOverlay({
       <div
         style={{
           position: "absolute",
-          left: `${roi.x * 100}%`,
-          top: `${roi.y * 100}%`,
+          left: cx,
+          top: cy,
           transform: "translate(-50%, -50%)",
           pointerEvents: "none",
         }}

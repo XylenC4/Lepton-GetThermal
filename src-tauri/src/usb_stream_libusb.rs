@@ -164,6 +164,35 @@ impl UsbStream {
         }
     }
 
+    /// Whether a PureThermal is attached (device list only; nothing is opened).
+    #[cfg_attr(windows, allow(dead_code))] // Windows uses the driver check instead
+    pub fn is_present() -> bool {
+        unsafe {
+            let mut ctx = ptr::null_mut();
+            if ffi::libusb_init(&mut ctx) != 0 {
+                return false;
+            }
+            let mut list = ptr::null();
+            let n = ffi::libusb_get_device_list(ctx, &mut list);
+            let mut found = false;
+            for i in 0..n.max(0) as usize {
+                let mut desc = std::mem::zeroed::<ffi::libusb_device_descriptor>();
+                if ffi::libusb_get_device_descriptor(*list.add(i), &mut desc) == 0
+                    && desc.idVendor == PT_VID
+                    && desc.idProduct == PT_PID
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if n >= 0 {
+                ffi::libusb_free_device_list(list, 1);
+            }
+            ffi::libusb_exit(ctx);
+            found
+        }
+    }
+
     fn find_and_open(ctx: *mut ffi::libusb_context) -> Result<*mut ffi::libusb_device_handle, CameraError> {
         unsafe {
             let mut list = ptr::null();

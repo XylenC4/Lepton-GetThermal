@@ -7,6 +7,8 @@ interface HoverReadoutProps {
   containerW: number;
   containerH: number;
   raw: RawFrame | null;
+  /** Difference mode: reference envelope (per-pixel min/max, raw) and noise margin (°C). */
+  reference?: { min: Uint16Array; max: Uint16Array; thresholdC: number } | null;
   /** Shown next to the value, e.g. "max" in max-hold mode. */
   tag?: string;
 }
@@ -17,7 +19,7 @@ function rawToC(raw: number): number {
 }
 
 /** Temperature under the mouse pointer, read from the displayed raw frame. */
-export function HoverReadout({ pointer, containerW, containerH, raw, tag }: HoverReadoutProps) {
+export function HoverReadout({ pointer, containerW, containerH, raw, tag, reference }: HoverReadoutProps) {
   if (!pointer || !raw || containerW === 0 || containerH === 0) return null;
 
   // The canvas is drawn with object-fit: contain: find the image rectangle.
@@ -35,6 +37,16 @@ export function HoverReadout({ pointer, containerW, containerH, raw, tag }: Hove
   const value = raw.data[row * raw.width + col];
   if (value === undefined) return null;
 
+  // Change against the reference envelope edge (0 inside min..max), in °C.
+  let delta: number | null = null;
+  if (reference && reference.min.length === raw.data.length) {
+    const i = row * raw.width + col;
+    const lo = reference.min[i];
+    const hi = reference.max[i];
+    delta = value > hi ? rawToC(value) - rawToC(hi) : value < lo ? rawToC(value) - rawToC(lo) : 0;
+  }
+  const changed = delta !== null && reference !== null && reference !== undefined && Math.abs(delta) > reference.thresholdC;
+
   // Keep the label inside the image: flip to the other side near the edges.
   const flipX = pointer.x > left + w - 90;
   const flipY = pointer.y > top + h - 34;
@@ -50,6 +62,11 @@ export function HoverReadout({ pointer, containerW, containerH, raw, tag }: Hove
     >
       <span className="hover-value">{rawToC(value).toFixed(1)}&deg;C</span>
       {tag && <span className="hover-tag">{tag}</span>}
+      {delta !== null && (
+        <span className={`hover-delta ${changed ? (delta > 0 ? "warm" : "cold") : ""}`}>
+          {changed ? `${delta > 0 ? "+" : "−"}${Math.abs(delta).toFixed(1)}°` : "±0"}
+        </span>
+      )}
       <span className="hover-pos">
         {col},{row}
       </span>

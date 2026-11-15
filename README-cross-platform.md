@@ -103,6 +103,21 @@ theme).
   markers and pointer readout use the held image; the spot temperature stays live.
 - **Themes:** *Auto / Light / Dark* switch at the bottom of the left panel. *Auto* follows the
   OS theme; the choice is remembered, and the window title bar follows it.
+- **Auto-connect:** no Connect button. The app watches for the PureThermal (every 1.5 s, without
+  opening it) and connects as soon as it is plugged in, also after it was unplugged during a
+  session. Until then a status screen says what is going on: no camera, connecting, wrong
+  Windows driver (with the Zadig fix), or a failed connect (retried every few seconds, *Try now*
+  to retry at once). macOS can't check presence without opening the device, so it simply tries
+  to connect every few seconds.
+- **Rotation** (*View → Rotation: 0° / 90° / 180° / 270°*, clockwise): the frame is rotated in
+  the backend, so the pointer readout, boxes and lines, min/max markers, spot meter and PNG
+  capture all follow it. Existing boxes and lines turn with the image.
+- **Session file:** all settings (palette, polarity, contrast, rotation, range, isotherm,
+  difference settings, gain/emissivity, boxes and lines, graph, spot meter, theme, tab) are saved
+  to `session.json` and restored at the next start. It sits next to the executable when that
+  folder is writable (portable use), otherwise in the per-user app config folder
+  (`%APPDATA%\<app identifier>` on Windows). Delete it to start with defaults. Not saved: the
+  difference reference and the trend history.
 - **Temperature range on the scale:** drag the two handles on the color scale (right panel) to
   fix the range. Pixels outside it clip to the end colors, and dashed marks show the scene's
   real min/max. Clicking the bar moves the nearest handle; arrow keys move a selected handle

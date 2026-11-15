@@ -3,6 +3,7 @@ pub mod colorize;
 pub mod diff;
 pub mod hold;
 pub mod palettes;
+pub mod rotate;
 pub mod upscale;
 
 use autogain::GainResult;
@@ -38,7 +39,8 @@ pub struct FrameResult {
 /// When `isotherm_raw` > 0, pixels whose raw Y16 value exceeds the threshold
 /// get a diagonal red/white stripe pattern.
 /// `display_range`: fixed raw Y16 range for the color mapping (None = auto per frame).
-/// `contrast`: linear stretch or plateau histogram equalization (see autogain.rs).
+/// `contrast`: linear stretch or plateau histogram equalization (see autogain.rs);
+/// `heq` carries the previous equalization mapping for temporal smoothing.
 /// `diff`: when set, show only the change against a reference frame (see diff.rs).
 /// When `upscaler` is provided, the grayscale is super-resolved before colorization.
 pub fn process_frame(
@@ -50,10 +52,11 @@ pub fn process_frame(
     isotherm_raw: u16,
     display_range: Option<(u16, u16)>,
     contrast: autogain::Contrast,
+    heq: Option<&mut autogain::HeqState>,
     diff: Option<diff::DiffParams>,
     upscaler: Option<&mut upscale::Upscaler>,
 ) -> FrameResult {
-    let mut stats = autogain::gain(y16_data, width, height, display_range, contrast);
+    let mut stats = autogain::gain_smoothed(y16_data, width, height, display_range, contrast, heq);
     if invert {
         for val in stats.grayscale.iter_mut() {
             *val = 255 - *val;
@@ -133,7 +136,7 @@ mod tests {
     fn pipeline_produces_correct_rgba_output() {
         // 2x2 frame, values 0-300
         let frame = make_y16_frame(&[0, 100, 200, 300]);
-        let result = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None, autogain::Contrast::Linear, None, None);
+        let result = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None, autogain::Contrast::Linear, None, None, None);
 
         assert_eq!(result.rgba.len(), 16); // 4 pixels * 4 RGBA
         assert_eq!(result.width, 2);
@@ -146,8 +149,8 @@ mod tests {
     #[test]
     fn isotherm_applies_stripes() {
         let frame = make_y16_frame(&[100, 200, 300, 400]);
-        let result_no_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None, autogain::Contrast::Linear, None, None);
-        let result_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 250, None, autogain::Contrast::Linear, None, None);
+        let result_no_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 0, None, autogain::Contrast::Linear, None, None, None);
+        let result_iso = process_frame(&frame, 2, 2, Palette::Grayscale, false, 250, None, autogain::Contrast::Linear, None, None, None);
 
         // Pixels 0,1 (100,200) below threshold → unchanged
         assert_eq!(&result_iso.rgba[0..8], &result_no_iso.rgba[0..8]);

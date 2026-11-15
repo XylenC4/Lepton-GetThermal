@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { Rotation } from "../lib/rotation";
 import { Palette } from "../lib/types";
 import { Segmented, ContrastMode } from "./ImageModeControls";
 
 interface ViewControlsProps {
   currentPalette: Palette;
   onPaletteChange: (palette: Palette) => void;
+  polarity: number;
   onPolarityChange: (polarity: number) => void;
+  rotation: Rotation;
+  onRotationChange: (r: Rotation) => void;
   contrast: ContrastMode;
   onContrastChange: (m: ContrastMode) => void;
   showMarkers: boolean;
@@ -20,7 +23,10 @@ interface ViewControlsProps {
 export function ViewControls({
   currentPalette,
   onPaletteChange,
+  polarity,
   onPolarityChange,
+  rotation,
+  onRotationChange,
   contrast,
   onContrastChange,
   showMarkers,
@@ -42,7 +48,7 @@ export function ViewControls({
       </label>
       <label>
         Polarity
-        <select onChange={(e) => onPolarityChange(Number(e.target.value))}>
+        <select value={polarity} onChange={(e) => onPolarityChange(Number(e.target.value))}>
           <option value={0}>White Hot</option>
           <option value={1}>Black Hot</option>
         </select>
@@ -64,6 +70,19 @@ export function ViewControls({
           ]}
         />
       </label>
+      <label>
+        Rotation
+        <Segmented
+          label="Rotation"
+          value={String(rotation) as "0" | "90" | "180" | "270"}
+          onChange={(v) => onRotationChange(Number(v) as Rotation)}
+          options={(["0", "90", "180", "270"] as const).map((v) => ({
+            value: v,
+            label: `${v}°`,
+            title: v === "0" ? "As the sensor sees it" : `Rotate the image ${v}° clockwise`,
+          }))}
+        />
+      </label>
       <label className="toggle">
         <input type="checkbox" checked={showMarkers} onChange={onToggleMarkers} />
         Min/Max markers
@@ -81,36 +100,32 @@ export function ViewControls({
   );
 }
 
+export interface IsothermSettings {
+  enabled: boolean;
+  tempC: number;
+}
+
+export const DEFAULT_ISOTHERM: IsothermSettings = { enabled: false, tempC: 35 };
+
 interface IsothermControlsProps {
-  onIsothermChange: (tempC: number | null) => void;
+  settings: IsothermSettings;
+  onChange: (s: IsothermSettings) => void;
 }
 
 /** Isotherm: stripe everything above a temperature. */
-export function IsothermControls({ onIsothermChange }: IsothermControlsProps) {
-  const [isothermEnabled, setIsothermEnabled] = useState(false);
-  const [isothermTemp, setIsothermTemp] = useState(35);
-
-  const handleIsothermToggle = () => {
-    const next = !isothermEnabled;
-    setIsothermEnabled(next);
-    onIsothermChange(next ? isothermTemp : null);
-  };
-
-  const handleIsothermTemp = (val: number) => {
-    setIsothermTemp(val);
-    if (isothermEnabled) {
-      onIsothermChange(val);
-    }
-  };
-
+export function IsothermControls({ settings, onChange }: IsothermControlsProps) {
   return (
     <div className="control-section">
       <h3>Isotherm</h3>
       <label className="toggle">
-        <input type="checkbox" checked={isothermEnabled} onChange={handleIsothermToggle} />
+        <input
+          type="checkbox"
+          checked={settings.enabled}
+          onChange={() => onChange({ ...settings, enabled: !settings.enabled })}
+        />
         Stripe above threshold
       </label>
-      {isothermEnabled && (
+      {settings.enabled && (
         <label>
           Threshold
           <div className="slider-row">
@@ -118,10 +133,10 @@ export function IsothermControls({ onIsothermChange }: IsothermControlsProps) {
               type="range"
               min={-20}
               max={150}
-              value={isothermTemp}
-              onChange={(e) => handleIsothermTemp(Number(e.target.value))}
+              value={settings.tempC}
+              onChange={(e) => onChange({ ...settings, tempC: Number(e.target.value) })}
             />
-            <span>{isothermTemp}&deg;C</span>
+            <span>{settings.tempC}&deg;C</span>
           </div>
         </label>
       )}

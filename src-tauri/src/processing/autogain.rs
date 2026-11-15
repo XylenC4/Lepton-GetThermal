@@ -66,6 +66,37 @@ pub fn gain(
     range: Option<(u16, u16)>,
     contrast: Contrast,
 ) -> GainResult {
+    gain_smoothed(y16_data, width, height, range, contrast, None)
+}
+
+/// Previous HEQ mapping (raw value -> gray level 0..1), for temporal smoothing.
+/// Keyed by raw value, so it stays valid when the scene range moves.
+#[derive(Debug, Default, Clone)]
+pub struct HeqState {
+    centers: Vec<f64>,
+    levels: Vec<f64>,
+}
+
+impl HeqState {
+    pub fn reset(&mut self) {
+        self.centers.clear();
+        self.levels.clear();
+    }
+}
+
+/// Weight of the previous frame's HEQ mapping (time constant ~3 frames, ~0.3 s).
+const HEQ_SMOOTHING: f64 = 0.75;
+
+/// Like [`gain`]; with `heq` set, the equalization mapping is blended with the
+/// previous frame's, so the image doesn't flicker as the histogram jitters.
+pub fn gain_smoothed(
+    y16_data: &[u8],
+    width: usize,
+    height: usize,
+    range: Option<(u16, u16)>,
+    contrast: Contrast,
+    heq: Option<&mut HeqState>,
+) -> GainResult {
     let pixel_count = width * height;
     if pixel_count == 0 || y16_data.len() < pixel_count * 2 {
         return GainResult {
@@ -109,7 +140,7 @@ pub fn gain(
     } else {
         match contrast {
             Contrast::Linear => linear(&pixels, lo, hi),
-            Contrast::Equalized => equalize(&pixels, lo, hi),
+            Contrast::Equalized => equalize(&pixels, lo, hi, heq),
         }
     };
 
@@ -136,7 +167,7 @@ fn linear(pixels: &[u16], lo: u16, hi: u16) -> (Vec<u8>, [u16; SCALE_TICKS]) {
     (gs, ticks)
 }
 
-fn equalize(pixels: &[u16], lo: u16, hi: u16) -> (Vec<u8>, [u16; SCALE_TICKS]) {
+fn equalize(pixels: &[u16], lo: u16, hi: u16, heq: Option<&mut HeqState>) -> (Vec<u8>, [u16; SCALE_TICKS]) {
     let span = (hi - lo) as usize + 1;
     let bin_w = span.div_ceil(HEQ_MAX_BINS).max(1);
     let nbins = span.div_ceil(bin_w);
@@ -171,6 +202,33 @@ fn equalize(pixels: &[u16], lo: u16, hi: u16) -> (Vec<u8>, [u16; SCALE_TICKS]) {
         let heq = if l1 > l0 { ((*l - l0) / (l1 - l0)).clamp(0.0, 1.0) } else { 0.0 };
         let lin = b as f64 / lin_den;
         *l = (1.0 - HEQ_LINEAR_MIX) * heq + HEQ_LINEAR_MIX * lin;
+    }
+
+    // Temporal smoothing: blend with the previous mapping, evaluated at the
+    // same raw values (linear interpolation; clamped beyond its ends).
+    if let Some(state) = heq {
+        let centers: Vec<f64> = (0..nbins).map(|b| lo as f64 + (b * bin_w) as f64 + (bin_w - 1) as f64 / 2.0).collect();
+        if !state.centers.is_empty() {
+            let (pc, pl) = (&state.centers, &state.levels);
+            let mut j = 0;
+            for (b, l) in level.iter_mut().enumerate() {
+                let x = centers[b];
+                while j + 1 < pc.len() && pc[j + 1] < x {
+                    j += 1;
+                }
+                let prev = if x <= pc[0] {
+                    pl[0]
+                } else if j + 1 >= pc.len() {
+                    pl[pc.len() - 1]
+                } else {
+                    let f = (x - pc[j]) / (pc[j + 1] - pc[j]);
+                    pl[j] + (pl[j + 1] - pl[j]) * f.clamp(0.0, 1.0)
+                };
+                *l = HEQ_SMOOTHING * prev + (1.0 - HEQ_SMOOTHING) * *l;
+            }
+        }
+        state.centers = centers;
+        state.levels = level.clone();
     }
 
     let gs = pixels.iter().map(|&v| (level[bin_of(v)] * 255.0).round() as u8).collect();
@@ -297,6 +355,36 @@ mod tests {
         assert!(heq.scale_ticks[8] >= 29315 && heq.scale_ticks[8] <= 29515, "{:?}", heq.scale_ticks);
         // Monotonic: warmer never maps darker.
         let mut pairs: Vec<(u16, u8)> = vals.iter().copied().zip(heq.grayscale.iter().copied()).collect();
+        pairs.sort();
+        assert!(pairs.windows(2).all(|w| w[0].1 <= w[1].1));
+    }
+
+    #[test]
+    fn heq_smoothing_damps_frame_to_frame_jumps() {
+        // Frame A: smooth gradient. Frame B: same scene, but the histogram
+        // shifts (a third of the pixels 0.5 K warmer), as noise/motion would.
+        let a: Vec<u16> = (0..19200u32).map(|i| 29315 + (i % 300) as u16).collect();
+        let b: Vec<u16> = a.iter().enumerate().map(|(i, &v)| if i % 3 == 0 { v + 50 } else { v }).collect();
+        let (fa, fb) = (make_y16_frame(&a), make_y16_frame(&b));
+        let diff = |x: &[u8], y: &[u8]| x.iter().zip(y).map(|(p, q)| (*p as i32 - *q as i32).abs() as u64).sum::<u64>();
+
+        let ga = gain(&fa, 160, 120, None, Contrast::Equalized);
+        let gb = gain(&fb, 160, 120, None, Contrast::Equalized);
+
+        let mut st = HeqState::default();
+        let sa = gain_smoothed(&fa, 160, 120, None, Contrast::Equalized, Some(&mut st));
+        assert_eq!(sa.grayscale, ga.grayscale, "first frame: nothing to blend with");
+        let sb = gain_smoothed(&fb, 160, 120, None, Contrast::Equalized, Some(&mut st));
+
+        // Compare on the unchanged pixels: their gray value should move less.
+        let keep = |g: &[u8]| g.iter().enumerate().filter(|(i, _)| i % 3 != 0).map(|(_, v)| *v).collect::<Vec<u8>>();
+        let jump_raw = diff(&keep(&ga.grayscale), &keep(&gb.grayscale));
+        let jump_smooth = diff(&keep(&ga.grayscale), &keep(&sb.grayscale));
+        assert!(jump_raw > 0);
+        assert!(jump_smooth * 2 < jump_raw, "smoothed {jump_smooth} vs raw {jump_raw}");
+
+        // Still monotonic after blending.
+        let mut pairs: Vec<(u16, u8)> = b.iter().copied().zip(sb.grayscale.iter().copied()).collect();
         pairs.sort();
         assert!(pairs.windows(2).all(|w| w[0].1 <= w[1].1));
     }

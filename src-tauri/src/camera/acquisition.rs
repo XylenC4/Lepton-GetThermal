@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
+    atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU8, Ordering},
     Arc,
 };
 
@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 
 use crate::processing::{
     self,
-    autogain::Contrast,
+    autogain::{Contrast, HeqState},
     diff::{Reference, ReferenceRecorder},
     hold::{Hold, HoldMode},
     palettes::Palette,
@@ -33,8 +33,12 @@ pub struct CameraAcquisition {
     hold: Arc<Mutex<Hold>>,
     /// Plateau histogram equalization instead of a linear stretch.
     equalize: Arc<AtomicBool>,
+    /// Previous equalization mapping (temporal smoothing).
+    heq_state: Arc<Mutex<HeqState>>,
     /// Neural network upscaler (None = disabled).
     upscaler: Arc<Mutex<Option<Upscaler>>>,
+    /// Display rotation, clockwise quarter turns (0..=3).
+    rotation: Arc<AtomicU8>,
     /// Whether upscaling is enabled by the user.
     upscale_enabled: Arc<AtomicBool>,
 }
@@ -53,8 +57,10 @@ impl CameraAcquisition {
             diff: Arc::new(Mutex::new(DiffState::default())),
             hold: Arc::new(Mutex::new(Hold::default())),
             equalize: Arc::new(AtomicBool::new(false)),
+            heq_state: Arc::new(Mutex::new(HeqState::default())),
             upscaler: Arc::new(Mutex::new(None)),
             upscale_enabled: Arc::new(AtomicBool::new(false)),
+            rotation: Arc::new(AtomicU8::new(0)),
         }
     }
 
@@ -106,6 +112,30 @@ impl CameraAcquisition {
         d.reference = None;
     }
 
+    /// Difference mode: a copy of the stored reference (per-pixel min/max), if any,
+    /// rotated like the displayed frame.
+    pub fn reference(&self) -> Option<Reference> {
+        let r = self.diff.lock().reference.clone()?;
+        let q = self.rotation.load(Ordering::Relaxed);
+        if q == 0 {
+            return Some(r);
+        }
+        use processing::rotate::rotate_u16;
+        let (w, h) = if q % 2 == 1 { (r.height, r.width) } else { (r.width, r.height) };
+        Some(Reference {
+            min: rotate_u16(&r.min, r.width, r.height, q),
+            max: rotate_u16(&r.max, r.width, r.height, q),
+            width: w,
+            height: h,
+        })
+    }
+
+    /// Display rotation in degrees clockwise (0, 90, 180, 270).
+    pub fn set_rotation(&self, degrees: u32) {
+        self.rotation
+            .store(processing::rotate::quarter_turns(degrees), Ordering::Relaxed);
+    }
+
     /// Difference mode settings, in raw Y16 units.
     pub fn set_diff(&self, enabled: bool, threshold: f32, warm_full: f32, cold_full: f32) {
         let mut d = self.diff.lock();
@@ -153,6 +183,8 @@ impl CameraAcquisition {
         let diff = self.diff.clone();
         let hold = self.hold.clone();
         let equalize = self.equalize.clone();
+        let heq_state = self.heq_state.clone();
+        let rotation = self.rotation.clone();
 
         self.stream.start_stream(move |y16_data, width, height| {
             let current_palette = *palette.lock();
@@ -206,6 +238,10 @@ impl CameraAcquisition {
             } else {
                 Contrast::Linear
             };
+            let mut heq_guard = heq_state.lock();
+            if contrast == Contrast::Linear {
+                heq_guard.reset(); // start fresh when equalization is switched on again
+            }
 
             let mut up_guard = upscaler.lock();
             let up_ref = if upscale_enabled.load(Ordering::Relaxed) {
@@ -223,6 +259,7 @@ impl CameraAcquisition {
                 iso,
                 range,
                 contrast,
+                Some(&mut *heq_guard),
                 diff_params,
                 up_ref,
             );
@@ -231,6 +268,7 @@ impl CameraAcquisition {
             result.reference_ready = reference_ready;
             result.recording_reference = recording;
             result.hold_frames = hold_frames;
+            processing::rotate::rotate_frame(&mut result, rotation.load(Ordering::Relaxed));
             on_frame(result);
         })?;
 

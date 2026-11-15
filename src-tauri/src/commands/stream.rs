@@ -247,3 +247,78 @@ pub fn reset_hold(state: State<'_, AppState>) -> Result<(), String> {
     cam.reset_hold();
     Ok(())
 }
+
+#[derive(Clone, Serialize)]
+pub struct ReferencePayload {
+    /// Per-pixel min / max (raw Y16 LE, base64), sensor resolution.
+    min: String,
+    max: String,
+    width: usize,
+    height: usize,
+}
+
+/// Difference mode: the stored reference envelope, so the UI can show the
+/// change under the pointer. `null` when there is none.
+#[tauri::command]
+pub fn get_reference(state: State<'_, AppState>) -> Result<Option<ReferencePayload>, String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    Ok(cam.reference().map(|r| {
+        let enc = |v: &[u16]| BASE64.encode(v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>());
+        ReferencePayload { min: enc(&r.min), max: enc(&r.max), width: r.width, height: r.height }
+    }))
+}
+
+/// Display rotation in degrees clockwise: 0, 90, 180 or 270.
+#[tauri::command]
+pub fn set_rotation(state: State<'_, AppState>, degrees: u32) -> Result<(), String> {
+    let cam_guard = state.camera.lock();
+    let cam = cam_guard.as_ref().ok_or("Camera not connected")?;
+    cam.set_rotation(degrees);
+    Ok(())
+}
+
+#[derive(Clone, Serialize)]
+pub struct CameraStatus {
+    /// Whether a PureThermal is plugged in; `null` = can't tell on this platform
+    /// (just try to connect).
+    present: Option<bool>,
+    /// Plugged in but not usable (e.g. wrong Windows driver), with what to do.
+    problem: Option<String>,
+}
+
+/// Cheap presence check for auto-connect, polled while no camera is streaming.
+/// Opens nothing.
+#[tauri::command]
+pub fn camera_status() -> CameraStatus {
+    #[cfg(windows)]
+    {
+        use crate::usb_driver_check::DriverState;
+        let r = crate::usb_driver_check::check();
+        match r.state {
+            DriverState::NotConnected => CameraStatus { present: Some(false), problem: None },
+            DriverState::WrongDriver => CameraStatus { present: Some(true), problem: Some(r.message()) },
+            _ => CameraStatus { present: Some(true), problem: None },
+        }
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    {
+        CameraStatus { present: Some(UsbStream::is_present()), problem: None }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        CameraStatus { present: None, problem: None }
+    }
+}
+
+/// Release the camera (after it was unplugged or stopped responding), so the
+/// next connect starts from a clean state.
+#[tauri::command]
+pub fn disconnect_camera(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(cam) = state.camera.lock().take() {
+        cam.stop_stream();
+    }
+    state.lepton.lock().take();
+    eprintln!("[lepton-getthermal] Camera released");
+    Ok(())
+}

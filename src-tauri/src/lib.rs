@@ -57,6 +57,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::stream::connect_camera,
             commands::stream::get_usb_driver_status,
+            commands::stream::camera_status,
+            commands::stream::disconnect_camera,
             commands::stream::start_stream,
             commands::stream::stop_stream,
             commands::stream::set_palette,
@@ -69,13 +71,21 @@ pub fn run() {
             commands::stream::set_contrast_mode,
             commands::stream::set_hold_mode,
             commands::stream::reset_hold,
+            commands::stream::get_reference,
             commands::stream::set_upscale,
+            commands::stream::set_rotation,
+            commands::session::load_session,
+            commands::session::save_session,
             commands::controls::perform_ffc,
             commands::controls::get_polarity,
             commands::controls::get_device_info,
             commands::controls::get_spotmeter_roi,
             commands::controls::set_spotmeter_roi,
             commands::controls::get_spot_temperature,
+            commands::controls::set_gain_mode,
+            commands::controls::get_gain_mode,
+            commands::controls::get_emissivity,
+            commands::controls::set_emissivity,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

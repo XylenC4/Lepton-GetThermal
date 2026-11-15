@@ -77,6 +77,7 @@ pub const LEP_OEM_SW_VERSION_DSP: u16 = 0x0824;
 // ---------------------------------------------------------------------------
 // RAD Module (0x0E00)
 // ---------------------------------------------------------------------------
+pub const LEP_RAD_FLUX_LINEAR_PARAMS: u16 = 0x0EBC;
 pub const LEP_RAD_TLINEAR_RESOLUTION: u16 = 0x0EC4;
 pub const LEP_RAD_SPOTMETER_ROI: u16 = 0x0ECC;
 
@@ -303,6 +304,30 @@ impl LeptonController {
         self.set_attribute(LEP_RAD_SPOTMETER_ROI, &roi)
     }
 
+    /// Radiometry "flux linear" parameters, 8 words (LEP_RAD_FLUX_LINEAR_PARAMS_T):
+    /// [sceneEmissivity (x/8192), TBkgK (0.01 K), tauWindow (x/8192), TWindowK,
+    ///  tauAtm (x/8192), TAtmK, reflWindow (x/8192), TReflK].
+    pub fn get_flux_params(&self) -> Result<[u16; 8], CameraError> {
+        let w = self.get_attribute(LEP_RAD_FLUX_LINEAR_PARAMS, 8)?;
+        let mut out = [0u16; 8];
+        out.copy_from_slice(&w[..8]);
+        Ok(out)
+    }
+
+    pub fn set_flux_params(&self, params: &[u16; 8]) -> Result<(), CameraError> {
+        self.set_attribute(LEP_RAD_FLUX_LINEAR_PARAMS, params)
+    }
+
+    /// Set scene emissivity (0.01..1.0) and the reflected/background temperature
+    /// (°C), keeping the window/atmosphere parameters. Affects TLinear pixel
+    /// values and the spot meter.
+    pub fn set_emissivity(&self, emissivity: f64, reflected_c: f64) -> Result<(), CameraError> {
+        let mut p = self.get_flux_params()?;
+        p[0] = flux_emissivity_word(emissivity);
+        p[1] = flux_kelvin_word(reflected_c);
+        self.set_flux_params(&p)
+    }
+
     /// Get TLinear resolution (0 = 0.1K, 1 = 0.01K).
     pub fn get_tlinear_resolution(&self) -> Result<u16, CameraError> {
         Ok(self.get_enum(LEP_RAD_TLINEAR_RESOLUTION)? as u16)
@@ -328,6 +353,16 @@ impl LeptonController {
     pub fn supports_radiometry(&self) -> bool {
         self.get_tlinear_resolution().is_ok()
     }
+}
+
+/// Emissivity as Lepton word (x/8192), clamped to 0.01..1.0.
+pub fn flux_emissivity_word(e: f64) -> u16 {
+    (e.clamp(0.01, 1.0) * 8192.0).round() as u16
+}
+
+/// Temperature (°C) as Lepton word in 0.01 K.
+pub fn flux_kelvin_word(c: f64) -> u16 {
+    ((c + 273.15) * 100.0).round().clamp(0.0, 65535.0) as u16
 }
 
 // ---------------------------------------------------------------------------

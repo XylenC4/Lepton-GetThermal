@@ -69,4 +69,32 @@ mod hw_tests {
             assert!(n >= 10, "expected ~27 frames, got {n}");
         }
     }
+
+    /// Gain mode + RAD flux parameters (emissivity): read, write a changed
+    /// emissivity, read back, restore. `cargo test --lib hw_rad -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn hw_rad_flux_and_gain() {
+        use crate::camera::lepton::flux_emissivity_word;
+        let usb = Arc::new(UsbStream::open().expect("open PureThermal"));
+        let lep = LeptonController::new(usb);
+        eprintln!("gain mode   : {:?} (0 high, 1 low, 2 auto)", lep.get_gain_mode());
+        let orig = lep.get_flux_params().expect("read RAD flux params");
+        eprintln!(
+            "flux params : {orig:?}\n   emissivity {:.3}, TBkg {:.2} °C, tauWin {:.3}, TWin {:.2} °C, tauAtm {:.3}, TAtm {:.2} °C, reflWin {:.3}, TRefl {:.2} °C",
+            orig[0] as f64 / 8192.0, orig[1] as f64 / 100.0 - 273.15,
+            orig[2] as f64 / 8192.0, orig[3] as f64 / 100.0 - 273.15,
+            orig[4] as f64 / 8192.0, orig[5] as f64 / 100.0 - 273.15,
+            orig[6] as f64 / 8192.0, orig[7] as f64 / 100.0 - 273.15,
+        );
+        lep.set_emissivity(0.80, 22.0).expect("write emissivity");
+        let changed = lep.get_flux_params().expect("read back");
+        eprintln!("after write : {changed:?}");
+        lep.set_flux_params(&orig).expect("restore");
+        let restored = lep.get_flux_params().expect("read restored");
+        eprintln!("restored    : {restored:?}");
+        assert_eq!(changed[0], flux_emissivity_word(0.80));
+        assert_eq!(changed[2..], orig[2..]); // window/atmosphere untouched
+        assert_eq!(restored, orig);
+    }
 }

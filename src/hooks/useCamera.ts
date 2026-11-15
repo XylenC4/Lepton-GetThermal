@@ -7,7 +7,8 @@ export function useCamera() {
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const connect = useCallback(async () => {
+  /** Opens the camera; resolves to the error message, or null on success. */
+  const connect = useCallback(async (): Promise<string | null> => {
     try {
       setState("connecting");
       setError(null);
@@ -15,20 +16,38 @@ export function useCamera() {
       const info = await invoke<DeviceInfo>("get_device_info");
       setDeviceInfo(info);
       setState("connected");
+      return null;
     } catch (e) {
       setError(String(e));
       setState("error");
+      return String(e);
     }
   }, []);
 
-  const startStream = useCallback(async () => {
+  const startStream = useCallback(async (): Promise<string | null> => {
     try {
       await invoke("start_stream");
       setState("streaming");
+      return null;
     } catch (e) {
       setError(String(e));
+      setState("error");
+      return String(e);
     }
   }, []);
+
+  /** Releases the camera (unplugged / not responding) and returns to "disconnected". */
+  const disconnect = useCallback(async () => {
+    await invoke("disconnect_camera").catch(() => {});
+    setDeviceInfo(null);
+    setState("disconnected");
+  }, []);
+
+  /** Cheap presence check for auto-connect (opens nothing). */
+  const getStatus = useCallback(
+    async () => invoke<{ present: boolean | null; problem: string | null }>("camera_status"),
+    []
+  );
 
   const stopStream = useCallback(async () => {
     try {
@@ -97,6 +116,30 @@ export function useCamera() {
     await invoke("reset_hold");
   }, []);
 
+  const getGainMode = useCallback(async () => invoke<"high" | "low" | "auto">("get_gain_mode"), []);
+
+  /** Changes the Lepton gain and runs an FFC. */
+  const setGainMode = useCallback(async (mode: "high" | "low" | "auto") => {
+    await invoke("set_gain_mode", { mode });
+  }, []);
+
+  const setEmissivity = useCallback(async (emissivity: number, reflectedC: number) => {
+    await invoke("set_emissivity", { emissivity, reflectedC });
+  }, []);
+
+  /** Difference reference envelope (per-pixel min/max), or null. */
+  const getReference = useCallback(async () => {
+    const r = await invoke<{ min: string; max: string; width: number; height: number } | null>("get_reference");
+    if (!r) return null;
+    const dec = (b64: string) => {
+      const bin = atob(b64);
+      const out = new Uint16Array(bin.length >> 1);
+      for (let i = 0; i < out.length; i++) out[i] = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+      return out;
+    };
+    return { min: dec(r.min), max: dec(r.max), width: r.width, height: r.height };
+  }, []);
+
   const setUpscale = useCallback(async (enabled: boolean) => {
     try {
       await invoke("set_upscale", { enabled });
@@ -105,10 +148,14 @@ export function useCamera() {
     }
   }, []);
 
+  /** Display rotation, degrees clockwise. */
+  const setRotation = useCallback(async (degrees: number) => {
+    await invoke("set_rotation", { degrees });
+  }, []);
+
+  /** Dismisses the error message (the connection state is left alone). */
   const clearError = useCallback(() => {
     setError(null);
-    setState("disconnected");
-    setDeviceInfo(null);
   }, []);
 
   const getSpotTemperature = useCallback(async (): Promise<number> => {
@@ -142,6 +189,9 @@ export function useCamera() {
     performFfc,
     setPolarity,
     setIsotherm,
+    setRotation,
+    disconnect,
+    getStatus,
     setDisplayRange,
     recordReference,
     clearReference,
@@ -149,6 +199,10 @@ export function useCamera() {
     setContrastMode,
     setHoldMode,
     resetHold,
+    getGainMode,
+    setGainMode,
+    setEmissivity,
+    getReference,
     clearError,
     getSpotTemperature,
     setSpotmeterRoi,
