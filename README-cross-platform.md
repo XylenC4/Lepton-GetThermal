@@ -33,6 +33,11 @@ which Microsoft allows to be shipped alongside an app.
 The WebView2 cache goes to `webview-data/` next to the exe if that folder is writable.
 WebView2 itself comes with Windows 11 and current Windows 10.
 
+Troubleshooting: errors and panics are written to `lepton-getthermal.log` next to the exe (or
+in `%TEMP%` if that folder isn't writable). Right-click → *Inspect* opens the developer tools,
+also in release builds. If the camera still uses the webcam driver, the app says so and shows
+the Zadig steps above instead of failing to connect.
+
 ### Building on Windows (native)
 
 Prerequisites:
@@ -88,9 +93,24 @@ cd src-tauri && cargo test --lib hw_ -- --ignored --nocapture
 
 ## Viewer features added in this fork
 
-All platforms. The left panel has three tabs: **View** (palette, polarity, contrast, markers,
-upscale, capture), **Analyze** (peak hold, difference, isotherm) and **Device** (info, FFC,
-theme).
+All platforms. The left panel has three tabs: **View** (palette, polarity, contrast, rotation,
+markers, upscale, capture), **Analyze** (peak hold, difference, isotherm, measure) and
+**Device** (info, measurement settings, FFC, theme).
+
+- **Box and line measurements** (*Analyze → Measure*): *+ Box* or *+ Line*, then drag on the
+  image (Esc cancels). Up to 6 tools, each with a color and a label (B1, L1, …) on the image.
+  - The table shows each tool's live **min / max / avg** in °C. Click a row to select it.
+  - The **graph** below the image shows the trend of all tools over the last 1, 5 or 15 min
+    (*Max / Avg / Min*), and for a selected line its **temperature profile** along the line.
+    *Hide graph / Show graph* toggles it.
+  - *CSV* exports the recorded trend (time, then min/max/avg per tool). *Clear* removes all
+    tools and their history.
+- **Measurement settings** (*Device → Measurement*), applied in the Lepton:
+  - **Gain:** *High* (≈ −10…140 °C, most sensitive, default), *Low* (≈ −10…400 °C) or *Auto*.
+    Changing gain runs an FFC.
+  - **Emissivity** with material presets (skin 0.98, matte black paint 0.97, wood/plastic 0.90,
+    oxidized steel 0.80, polished metal 0.10, …) or a custom value 0.10–1.00.
+  - **Reflected temperature** (−20…60 °C), which matters most for low emissivities.
 
 - **Equalized contrast** (*View → Contrast: Equalized*): plateau histogram equalization
   spreads the colors over the temperatures that actually occur, so one hot object no longer

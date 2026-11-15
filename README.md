@@ -30,8 +30,13 @@ Windows and Linux setup (WinUSB driver, udev rule, portable build) is described 
 - **Auto-connect** — Connects as soon as the camera is plugged in, with a status screen until then
 - **Session file** — All settings, boxes and lines are restored at the next start
 - **Themes** — Auto / Light / Dark
+- **Measurement settings** — Gain (high / low / auto), emissivity with material presets, reflected temperature
 
 See [README-cross-platform.md](README-cross-platform.md#viewer-features-added-in-this-fork) for details.
+
+This fork also fixes Lepton attribute sizes that made several camera settings (and radiometry
+detection) silently fail on every platform, including macOS. See
+[Fixes that also affect macOS](README-cross-platform.md#fixes-that-also-affect-macos).
 
 ## Prerequisites
 
@@ -101,11 +106,17 @@ powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
 
 Each frame follows this path:
 
-1. **Auto-gain** — Normalize 16-bit Y16 to 8-bit grayscale (linear min/max stretch)
-2. **Invert** — Flip grayscale if polarity is black-hot
-3. **Upscale** *(optional)* — ESPCN 3× neural network super-resolution
-4. **Colorize** — Apply 256-entry RGB palette LUT
-5. **Isotherm** *(optional)* — Overlay red/white stripes on pixels above threshold
+1. **Peak hold** *(optional)* — Replace the live frame with each pixel's held max or min
+2. **Auto-gain** — Normalize 16-bit Y16 to 8-bit grayscale (linear stretch, fixed range, or plateau histogram equalization)
+3. **Invert** — Flip grayscale if polarity is black-hot
+4. **Upscale** *(optional)* — ESPCN 3× neural network super-resolution
+5. **Colorize** — Apply 256-entry RGB palette LUT
+6. **Difference** *(optional)* — Color only pixels outside the recorded per-pixel reference range
+7. **Isotherm** *(optional)* — Overlay red/white stripes on pixels above threshold
+8. **Rotate** *(optional)* — 90° / 180° / 270°, applied to the image and the raw frame used for readouts
+
+The diagram above shows the macOS USB path (IOKit). On Windows and Linux the same `UsbStream`
+API is implemented with libusb.
 
 ### Why IOKit instead of AVFoundation?
 
@@ -115,21 +126,27 @@ PureThermal exposes two video formats via UVC: BGRA (processed by the device's i
 
 ```
 src/                        # React frontend
-├── components/             # UI components (canvas, controls, overlays)
-├── hooks/                  # useCamera (Tauri commands), useFrameStream (events)
-└── lib/types.ts            # TypeScript interfaces
+├── components/             # UI: canvas, controls, overlays, measure tools, chart dock, waiting screen
+├── hooks/                  # useCamera (commands), useFrameStream (events), useAutoConnect, useTheme
+└── lib/                    # types, measure (stats, CSV), rotation, session
 
 src-tauri/                  # Rust backend
 ├── src/
 │   ├── camera/             # Lepton SDK (UVC extension units), frame acquisition
-│   ├── commands/           # Tauri command handlers (stream, controls)
-│   ├── processing/         # Auto-gain, colorization, palettes, ONNX upscaling
-│   ├── usb_stream.rs       # IOKit isochronous USB streaming
+│   ├── commands/           # Tauri command handlers (stream, controls, session)
+│   ├── processing/         # Auto-gain, colorize, palettes, diff, hold, rotate, ONNX upscaling
+│   ├── usb_stream.rs       # Platform switch: IOKit on macOS, libusb elsewhere
+│   ├── usb_stream_iokit.rs # IOKit isochronous USB streaming (macOS)
 │   ├── usb_helper.c        # IOKit C wrapper (FFI)
+│   ├── usb_stream_libusb.rs# libusb isochronous USB streaming (Windows, Linux, Android)
+│   ├── usb_driver_check.rs # Windows: is the camera on WinUSB/libusbK?
 │   ├── uvc_descriptors.rs  # USB descriptor parsing
 │   └── uvc_payload.rs      # UVC payload reassembly
 └── models/
     └── super_resolution.onnx  # Embedded ESPCN 3× model
+
+scripts/                    # build-windows.ps1 (native), build-windows.sh (cross-compile)
+packaging/                  # Linux udev rule, Windows portable README
 ```
 
 ## Tech stack
