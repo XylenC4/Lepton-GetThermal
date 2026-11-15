@@ -2,15 +2,17 @@
 
 > **Warning:** This entire application was coded by AI agents (Claude Code). Review the code accordingly before using it in any critical context.
 
-![Lepton-GetThermal screenshot](assets/screenshot.png)
+![Lepton-GetThermal on Windows: box and line measurements with trend and profile graphs](assets/screenshot-windows.png)
 
-A macOS thermal camera viewer for the FLIR Lepton module via PureThermal USB adapter. Built with Tauri v2, Rust, and React.
+A thermal camera viewer for the FLIR Lepton module via PureThermal USB adapter, for **macOS, Windows and Linux**. Built with Tauri v2, Rust, and React.
 
-Lepton-GetThermal bypasses AVFoundation — which only exposes pre-processed BGRA frames — to stream raw **Y16 radiometric data** directly over IOKit isochronous USB. This preserves the full 16-bit thermal values needed for accurate temperature measurement and custom processing.
+Lepton-GetThermal streams raw **Y16 radiometric data** straight from the USB device instead of the pre-processed BGRA webcam image. On macOS it uses IOKit isochronous USB (AVFoundation only exposes BGRA); on Windows and Linux it uses libusb. This preserves the full 16-bit thermal values needed for accurate temperature measurement and custom processing.
+
+Windows and Linux setup (WinUSB driver, udev rule, portable build) is described in [README-cross-platform.md](README-cross-platform.md).
 
 ## Features
 
-- **Raw Y16 streaming** — Direct IOKit USB isochronous transfers from PureThermal (160×120 @ 9 fps)
+- **Raw Y16 streaming** — Direct USB isochronous transfers from PureThermal (160×120 @ 9 fps): IOKit on macOS, libusb on Windows/Linux
 - **Color palettes** — Iron Black (FLIR-style), Rainbow, Grayscale
 - **Polarity** — White-hot / Black-hot toggle
 - **Isotherm overlay** — Configurable temperature threshold with striped visual overlay
@@ -19,10 +21,21 @@ Lepton-GetThermal bypasses AVFoundation — which only exposes pre-processed BGR
 - **Min/Max markers** — Visual pins showing hottest and coldest pixel locations
 - **Flat-field correction** — Trigger shutter recalibration
 - **Screenshot capture** — Save frames as PNG
+- **Box and line measurements** — min / max / avg per box or line, live trend graph (1 / 5 / 15 min) and line profile, CSV export
+- **Temperature under the pointer** — Hover readout from the raw frame
+- **Peak hold** — Per-pixel max or min since start or reset
+- **Difference mode** — Record a reference and show only pixels that warmed or cooled
+- **Adjustable range** — Drag handles on the color scale; equalized (histogram) contrast option
+- **Rotation** — 0° / 90° / 180° / 270°, applied to overlays and captures too
+- **Auto-connect** — Connects as soon as the camera is plugged in, with a status screen until then
+- **Session file** — All settings, boxes and lines are restored at the next start
+- **Themes** — Auto / Light / Dark
+
+See [README-cross-platform.md](README-cross-platform.md#viewer-features-added-in-this-fork) for details.
 
 ## Prerequisites
 
-- **macOS 13+** (Apple Silicon or Intel)
+- **macOS 13+** (Apple Silicon or Intel), **Windows 10/11 x64** (WinUSB driver via Zadig), or **Linux** (udev rule)
 - **Node.js** (v18+)
 - **Rust** (stable toolchain)
 - **FLIR Lepton** module with **PureThermal** USB adapter (VID `1e4e`, PID `0100`)
@@ -40,9 +53,16 @@ npm run tauri dev
 npm run tauri build
 ```
 
-The production build outputs:
+The macOS production build outputs:
 - `src-tauri/target/release/bundle/macos/Lepton-GetThermal.app`
-- `src-tauri/target/release/bundle/dmg/Lepton-GetThermal_0.1.0_aarch64.dmg`
+- `src-tauri/target/release/bundle/dmg/Lepton-GetThermal_<version>_aarch64.dmg`
+
+On Windows, build the portable zip (exe + DLLs, nothing to install) with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
+# -> src-tauri\target\release\portable\Lepton-GetThermal_<version>_x64-portable.zip
+```
 
 ## Architecture
 
@@ -119,7 +139,7 @@ src-tauri/                  # Rust backend
 | Framework | Tauri v2 |
 | Frontend | React 18, TypeScript, Vite |
 | Backend | Rust (2021 edition) |
-| USB | IOKit (via C FFI) |
+| USB | IOKit (via C FFI) on macOS, libusb on Windows/Linux |
 | ML inference | ONNX Runtime (`ort` crate) |
 | Camera SDK | FLIR Lepton UVC extension units |
 
