@@ -30,11 +30,11 @@ if [ -z "$DML" ]; then
   DML=$(ls -1 "$HOME"/.cache/ort.pyke.io/dfbin/$TARGET/*/DirectML.dll | head -1)
 fi
 cp -f "$DML" "$LIBS/DirectML.dll"
-[ -s "$LIBS/vc_redist.x64.exe" ] || \
-  curl -fL -o "$LIBS/vc_redist.x64.exe" https://aka.ms/vs/17/release/vc_redist.x64.exe
+[ -s "$LIBS/vc_redist.exe" ] || \
+  curl -fL -o "$LIBS/vc_redist.exe" https://aka.ms/vs/17/release/vc_redist.x64.exe
 if [ ! -s "$LIBS/MSVCP140.dll" ]; then
   T=$(mktemp -d)
-  cabextract -q -d "$T/l1" "$LIBS/vc_redist.x64.exe"
+  cabextract -q -d "$T/l1" "$LIBS/vc_redist.exe"
   for f in "$T"/l1/*; do cabextract -q -d "$T/l2" "$f" 2>/dev/null || true; done
   for n in msvcp140 msvcp140_1 vcruntime140 vcruntime140_1; do
     cp "$T/l2/$n.dll_amd64" "$LIBS/${n^^}.dll"
