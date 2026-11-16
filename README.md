@@ -1,5 +1,7 @@
 # Lepton-GetThermal
 
+> **Android:** see [README-android.md](README-android.md).
+
 > **Warning:** This entire application was coded by AI agents (Claude Code). Review the code accordingly before using it in any critical context.
 
 ![Lepton-GetThermal on Windows: box and line measurements with trend and profile graphs](assets/screenshot-windows.png)

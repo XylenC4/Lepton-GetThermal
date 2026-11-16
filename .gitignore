@@ -25,7 +25,8 @@ dist-ssr
 
 # Tauri
 src-tauri/target/
-src-tauri/gen/
+src-tauri/gen/*
+!src-tauri/gen/android/
 
 # staged Windows runtime DLLs / build logs
 src-tauri/windows-libs/

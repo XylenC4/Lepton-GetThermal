@@ -1465,3 +1465,49 @@ input[type="range"]::-webkit-slider-thumb:hover {
     animation: none;
   }
 }
+
+/* ===== Android / touch screens ===== */
+/* Edge-to-edge: keep content clear of the status and navigation bars. */
+.app {
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.app > .control-panel,
+.app > .info-panel {
+  height: auto;
+  max-height: 100%;
+}
+
+/* Phone in portrait: video on top, panels stacked below. */
+@media (orientation: portrait) and (max-width: 760px) {
+  .app {
+    flex-direction: column;
+  }
+  .app > main {
+    order: 0;
+    flex: 0 0 auto;
+    height: 52vh;
+    min-height: 0;
+  }
+  .app > .info-panel {
+    order: 1;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    max-height: 18vh;
+    overflow-y: auto;
+    border-left: none;
+    border-top: 1px solid var(--border-dim);
+  }
+  .app > .control-panel {
+    order: 2;
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    border-right: none;
+    border-top: 1px solid var(--border-dim);
+  }
+}

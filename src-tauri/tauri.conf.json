@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/nicedoc/tauri-schema/main/tauri.conf.schema.json",
   "productName": "Lepton-GetThermal",
   "version": "0.2.0",
-  "identifier": "com.lepton-getthermal.dev",
+  "identifier": "com.xylenc4.leptongetthermal",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",

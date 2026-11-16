@@ -4,6 +4,10 @@ pub mod diff;
 pub mod hold;
 pub mod palettes;
 pub mod rotate;
+#[cfg(not(target_os = "android"))]
+pub mod upscale;
+#[cfg(target_os = "android")]
+#[path = "upscale_stub.rs"]
 pub mod upscale;
 
 use autogain::GainResult;

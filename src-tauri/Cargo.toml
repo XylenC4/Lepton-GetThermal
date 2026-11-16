@@ -23,8 +23,12 @@ base64 = "0.22"
 parking_lot = "0.12"
 thiserror = "2"
 libc = "0.2"
+
+# ONNX super-resolution (desktop only; no prebuilt ONNX Runtime for Android).
+[target.'cfg(not(target_os = "android"))'.dependencies]
 ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
 ndarray = "0.17"
+
 
 # libusb backend (Linux, Windows, Android). macOS keeps the native IOKit backend.
 [target.'cfg(not(target_os = "macos"))'.dependencies]

@@ -127,7 +127,25 @@ struct CtxPtr(*mut ffi::libusb_context);
 unsafe impl Send for CtxPtr {}
 
 impl UsbStream {
+    /// Android: open the device the Kotlin side obtained through `UsbManager`.
+    #[cfg(target_os = "android")]
+    pub fn open() -> Result<Self, CameraError> {
+        match crate::android_usb::fd() {
+            Some(fd) => Self::open_fd(fd as isize),
+            None => Err(CameraError::OpenFailed(
+                "PureThermal not connected or USB permission not granted".into(),
+            )),
+        }
+    }
+
+    /// Android: present once the Kotlin side has an open connection.
+    #[cfg(target_os = "android")]
+    pub fn is_present() -> bool {
+        crate::android_usb::fd().is_some()
+    }
+
     /// Find and open the PureThermal device (desktop platforms).
+    #[cfg(not(target_os = "android"))]
     pub fn open() -> Result<Self, CameraError> {
         let mut ctx = ptr::null_mut();
         let r = unsafe { ffi::libusb_init(&mut ctx) };
@@ -144,7 +162,7 @@ impl UsbStream {
     }
 
     /// Open from an already-opened OS file descriptor (Android `UsbDeviceConnection.getFileDescriptor()`).
-    #[allow(dead_code)]
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub fn open_fd(fd: isize) -> Result<Self, CameraError> {
         let mut ctx = ptr::null_mut();
         unsafe {
@@ -166,6 +184,7 @@ impl UsbStream {
 
     /// Whether a PureThermal is attached (device list only; nothing is opened).
     #[cfg_attr(windows, allow(dead_code))] // Windows uses the driver check instead
+    #[cfg(not(target_os = "android"))]
     pub fn is_present() -> bool {
         unsafe {
             let mut ctx = ptr::null_mut();
@@ -193,6 +212,7 @@ impl UsbStream {
         }
     }
 
+    #[cfg(not(target_os = "android"))]
     fn find_and_open(ctx: *mut ffi::libusb_context) -> Result<*mut ffi::libusb_device_handle, CameraError> {
         unsafe {
             let mut list = ptr::null();
