@@ -35,8 +35,22 @@ fn portable_data_dir() -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
+/// Frontend console output and JS errors, written to the log file.
+#[tauri::command]
+fn frontend_log(level: String, message: String) {
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    eprintln!("[js {level} {t:.3}] {message}");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Log panics with location (stderr goes to lepton-getthermal.log).
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("[lepton-getthermal] PANIC: {info}");
+    }));
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
@@ -47,9 +61,15 @@ pub fn run() {
             #[allow(unused_mut)]
             let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?;
             if let Some(dir) = portable_data_dir() {
+                eprintln!("[lepton-getthermal] WebView data dir: {}", dir.display());
                 builder = builder.data_directory(dir);
             }
-            builder.build()?;
+            let window = builder.build()?;
+            // `--debug` or LEPTON_DEBUG=1: open the WebView developer tools at start.
+            if std::env::args().any(|a| a == "--debug") || std::env::var_os("LEPTON_DEBUG").is_some() {
+                eprintln!("[lepton-getthermal] debug mode: opening devtools");
+                window.open_devtools();
+            }
             Ok(())
         })
         .manage(AppState {
@@ -79,6 +99,7 @@ pub fn run() {
             commands::stream::set_simulation,
             commands::stream::get_simulation,
             commands::session::load_session,
+            frontend_log,
             commands::session::save_session,
             commands::controls::perform_ffc,
             commands::controls::get_polarity,
