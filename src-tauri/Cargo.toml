@@ -30,13 +30,20 @@ libc = "0.2"
 
 # ONNX super-resolution (desktop only; no prebuilt ONNX Runtime for Android).
 [target.'cfg(not(target_os = "android"))'.dependencies]
-ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
 ndarray = "0.17"
+
+# Linux/macOS: ONNX Runtime linked statically (downloaded prebuilt).
+[target.'cfg(all(not(target_os = "android"), not(windows)))'.dependencies]
+ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
+
+# Windows: single exe. ONNX Runtime + its VC++ runtime DLLs are embedded and
+# loaded at runtime (see processing/upscale.rs). Tauri links the VC++ runtime
+# statically, so the exe needs only DLLs that ship with Windows 10/11.
+[target.'cfg(windows)'.dependencies]
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "load-dynamic", "api-24"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_Foundation", "Win32_Devices_DeviceAndDriverInstallation"] }
 
 
 # libusb backend (Linux, Windows, Android). macOS keeps the native IOKit backend.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 libusb1-sys = { version = "0.7", features = ["vendored"] }
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_Foundation", "Win32_Devices_DeviceAndDriverInstallation"] }

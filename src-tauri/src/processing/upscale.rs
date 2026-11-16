@@ -22,9 +22,85 @@ pub struct Upscaler {
 unsafe impl Send for Upscaler {}
 unsafe impl Sync for Upscaler {}
 
+/// Windows: ONNX Runtime and the VC++ runtime DLLs it needs are embedded in
+/// the exe. On first use they are written to
+/// `%LOCALAPPDATA%\Lepton-GetThermal\onnxruntime-<ver>\` and loaded from there.
+#[cfg(windows)]
+mod win_runtime {
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
+
+    const VERSION: &str = "1.24.4";
+    macro_rules! dll {
+        ($n:literal) => {
+            ($n, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/windows-libs/", $n)) as &[u8])
+        };
+    }
+    const DLLS: &[(&str, &[u8])] = &[
+        dll!("VCRUNTIME140.dll"),
+        dll!("VCRUNTIME140_1.dll"),
+        dll!("MSVCP140.dll"),
+        dll!("MSVCP140_1.dll"),
+        dll!("onnxruntime.dll"),
+    ];
+
+    fn extract() -> Result<PathBuf, String> {
+        let base = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let dir = base.join("Lepton-GetThermal").join(format!("onnxruntime-{VERSION}"));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        for (name, bytes) in DLLS {
+            let p = dir.join(name);
+            let ok = std::fs::metadata(&p).map(|m| m.len() == bytes.len() as u64).unwrap_or(false);
+            if !ok {
+                let tmp = dir.join(format!("{name}.tmp"));
+                std::fs::write(&tmp, bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;
+                std::fs::rename(&tmp, &p).map_err(|e| format!("{}: {e}", p.display()))?;
+            }
+        }
+        Ok(dir)
+    }
+
+    /// Extracts (once) and loads ONNX Runtime.
+    pub fn ensure() -> Result<(), String> {
+        static INIT: OnceLock<Result<(), String>> = OnceLock::new();
+        INIT.get_or_init(|| {
+            let dir = extract()?;
+            // Let onnxruntime.dll find its VC++ runtime DLLs next to it.
+            let wide: Vec<u16> = dir.as_os_str().encode_wide_nul();
+            unsafe { SetDllDirectoryW(wide.as_ptr()) };
+            let r = ort::init_from(dir.join("onnxruntime.dll"))
+                .map_err(|e| format!("load onnxruntime.dll: {e}"))?
+                .commit();
+            let _ = r;
+            eprintln!("[upscale] ONNX Runtime loaded from {}", dir.display());
+            Ok(())
+        })
+        .clone()
+    }
+
+    trait EncodeWideNul {
+        fn encode_wide_nul(&self) -> Vec<u16>;
+    }
+    impl EncodeWideNul for std::ffi::OsStr {
+        fn encode_wide_nul(&self) -> Vec<u16> {
+            use std::os::windows::ffi::OsStrExt;
+            self.encode_wide().chain(std::iter::once(0)).collect()
+        }
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetDllDirectoryW(path: *const u16) -> i32;
+    }
+}
+
 impl Upscaler {
     /// Load the embedded ONNX super-resolution model.
     pub fn new() -> Result<Self, String> {
+        #[cfg(windows)]
+        win_runtime::ensure()?;
         let mut session = Session::builder()
             .map_err(|e| format!("ORT session builder: {e}"))?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
@@ -40,6 +116,8 @@ impl Upscaler {
 
     /// Load a custom ONNX model from a file path (e.g. thermal IMDN).
     pub fn from_file(path: &str) -> Result<Self, String> {
+        #[cfg(windows)]
+        win_runtime::ensure()?;
         let mut session = Session::builder()
             .map_err(|e| format!("ORT session builder: {e}"))?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)

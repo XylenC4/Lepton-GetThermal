@@ -25,13 +25,13 @@ libusb cannot talk to a device while Windows' webcam driver (`usbvideo.sys`) own
 The camera then no longer shows up as a webcam in other apps. To undo this, open Device Manager,
 right-click the device, choose *Uninstall device* and tick *Delete the driver*, then replug it.
 
-### 2. Run the app (portable, nothing to install)
+### 2. Run the app (single exe, nothing to install)
 
-Unzip `Lepton-GetThermal_<version>_x64-portable.zip` anywhere (a USB stick works too) and start
-`Lepton-GetThermal.exe`. The zip contains the exe, `DirectML.dll` and the Visual C++ runtime DLLs,
-which Microsoft allows to be shipped alongside an app.
-The WebView2 cache goes to `webview-data/` next to the exe if that folder is writable.
-WebView2 itself comes with Windows 11 and current Windows 10.
+Start `Lepton-GetThermal_<version>_x64.exe` from anywhere, a USB stick works too. The exe only
+needs DLLs that ship with Windows 10/11, and WebView2 comes with current Windows. ONNX Runtime and the
+VC++ DLLs it needs are embedded in the exe. They are unpacked to
+`%LOCALAPPDATA%\Lepton-GetThermal\onnxruntime-<ver>\` only when AI upscaling is switched on.
+Build from Linux with `scripts/build-windows.sh`.
 
 Troubleshooting: errors and panics are written to `lepton-getthermal.log` next to the exe (or
 in `%TEMP%` if that folder isn't writable). Right-click → *Inspect* opens the developer tools,

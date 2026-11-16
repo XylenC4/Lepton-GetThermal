@@ -1,12 +1,7 @@
 {
   "bundle": {
-    "resources": {
-      "windows-libs/DirectML.dll": "DirectML.dll",
-      "windows-libs/vc_redist.x64.exe": "vc_redist.x64.exe"
-    },
     "windows": {
       "nsis": {
-        "installerHooks": "windows/installer-hooks.nsh",
         "installMode": "perMachine"
       }
     }
