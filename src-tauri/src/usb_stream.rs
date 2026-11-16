@@ -4,13 +4,93 @@
 
 #[cfg(target_os = "macos")]
 #[path = "usb_stream_iokit.rs"]
-mod imp;
+mod real;
 
 #[cfg(not(target_os = "macos"))]
 #[path = "usb_stream_libusb.rs"]
-mod imp;
+mod real;
 
-pub use imp::UsbStream;
+/// Synthetic PureThermal + Lepton 3.5, used when simulation is switched on.
+#[path = "usb_stream_sim.rs"]
+mod sim;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use crate::camera::types::CameraError;
+
+/// Simulation switch (UI button; also on with `--features sim`).
+static SIMULATE: AtomicBool = AtomicBool::new(cfg!(feature = "sim"));
+
+pub fn simulation() -> bool {
+    SIMULATE.load(Ordering::SeqCst)
+}
+
+pub fn set_simulation(on: bool) {
+    SIMULATE.store(on, Ordering::SeqCst);
+}
+
+/// The camera: real hardware, or the simulator.
+pub enum UsbStream {
+    Real(real::UsbStream),
+    Sim(sim::UsbStream),
+}
+
+impl UsbStream {
+    pub fn open() -> Result<Self, CameraError> {
+        if simulation() {
+            sim::UsbStream::open().map(Self::Sim)
+        } else {
+            real::UsbStream::open().map(Self::Real)
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_present() -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            simulation()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            simulation() || real::UsbStream::is_present()
+        }
+    }
+
+    pub fn is_simulated(&self) -> bool {
+        matches!(self, Self::Sim(_))
+    }
+
+    pub fn start_stream<F>(&self, callback: F) -> Result<(), CameraError>
+    where
+        F: Fn(&[u8], u32, u32) + Send + Sync + 'static,
+    {
+        match self {
+            Self::Real(u) => u.start_stream(callback),
+            Self::Sim(u) => u.start_stream(callback),
+        }
+    }
+
+    pub fn stop_stream(&self) -> Result<(), CameraError> {
+        match self {
+            Self::Real(u) => u.stop_stream(),
+            Self::Sim(u) => u.stop_stream(),
+        }
+    }
+
+    pub fn get_ctrl(&self, unit_id: u8, control_id: u8, data: &mut [u8]) -> Result<usize, CameraError> {
+        match self {
+            Self::Real(u) => u.get_ctrl(unit_id, control_id, data),
+            Self::Sim(u) => u.get_ctrl(unit_id, control_id, data),
+        }
+    }
+
+    pub fn set_ctrl(&self, unit_id: u8, control_id: u8, data: &[u8]) -> Result<(), CameraError> {
+        match self {
+            Self::Real(u) => u.set_ctrl(unit_id, control_id, data),
+            Self::Sim(u) => u.set_ctrl(unit_id, control_id, data),
+        }
+    }
+}
 
 /// Hardware-in-the-loop test. Needs a PureThermal attached:
 /// `cargo test --lib hw_ -- --ignored --nocapture`

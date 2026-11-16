@@ -1511,3 +1511,47 @@ input[type="range"]::-webkit-slider-thumb:hover {
     border-top: 1px solid var(--border-dim);
   }
 }
+
+/* ===== Full screen ===== */
+.fullscreen-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-dim);
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  color: var(--text-primary);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  opacity: 0.8;
+}
+.fullscreen-btn:hover { opacity: 1; }
+.app.app--fullscreen > .control-panel,
+.app.app--fullscreen > .info-panel { display: none; }
+.app.app--fullscreen > main { flex: 1 1 auto; height: auto; }
+
+/* ===== Simulation ===== */
+.waiting-sim { margin-top: 14px; }
+.sim-badge {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #e0a020;
+  background: color-mix(in srgb, #e0a020 22%, transparent);
+  color: #f0c050;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}

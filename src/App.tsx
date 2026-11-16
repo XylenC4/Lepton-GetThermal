@@ -1,4 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { VideoCanvas } from "./components/VideoCanvas";
 import { ControlPanel } from "./components/ControlPanel";
 import { TemperatureDisplay } from "./components/TemperatureDisplay";
@@ -320,8 +322,37 @@ function App({ session }: { session: Session }) {
   const isStreaming = camera.state === "streaming";
   const showRadiometry = camera.deviceInfo?.supports_radiometry ?? false;
 
+  // Simulated camera (synthetic scene, no hardware needed).
+  const [simulating, setSimulating] = useState(false);
+  useEffect(() => {
+    invoke<boolean>("get_simulation").then(setSimulating).catch(() => {});
+  }, []);
+  const setSimulation = useCallback(async (on: boolean) => {
+    await invoke("set_simulation", { enabled: on }).catch(() => {});
+    setSimulating(on);
+    await camera.disconnect();
+    autoConnect.retryNow();
+  }, [camera, autoConnect]);
+
+  // Full screen: hide the side panels and, where the platform allows it,
+  // make the window itself full screen (desktop). Android: panels only.
+  const [fullscreen, setFullscreen] = useState(false);
+  const toggleFullscreen = useCallback(() => {
+    setFullscreen((on) => {
+      const next = !on;
+      getCurrentWindow().setFullscreen(next).catch(() => {});
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") toggleFullscreen(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen, toggleFullscreen]);
+
   return (
-    <div className="app">
+    <div className={fullscreen ? "app app--fullscreen" : "app"}>
       <ControlPanel
         tab={tab}
         onTabChange={setTab}
@@ -397,8 +428,27 @@ function App({ session }: { session: Session }) {
         }
       />
       <main className="video-area">
+        {simulating && (
+          <button className="sim-badge" onClick={() => setSimulation(false)} title="Stop the simulated camera">
+            SIMULATION <span aria-hidden="true">✕</span>
+          </button>
+        )}
+        <button
+          className="fullscreen-btn"
+          onClick={toggleFullscreen}
+          title={fullscreen ? "Exit full screen (Esc)" : "Full screen"}
+          aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {fullscreen ? (
+              <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+            ) : (
+              <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            )}
+          </svg>
+        </button>
         <div className="video-stage">
-        {!isStreaming && <WaitingScreen phase={autoConnect.phase} onRetry={autoConnect.retryNow} />}
+        {!isStreaming && <WaitingScreen phase={autoConnect.phase} onRetry={autoConnect.retryNow} onSimulate={() => setSimulation(true)} />}
         {isStreaming && camera.error && (
           <div className="error" onClick={() => camera.clearError()} style={{ cursor: "pointer" }}>
             {camera.error}

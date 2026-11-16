@@ -37,7 +37,8 @@ pub fn connect_camera(state: State<'_, AppState>) -> Result<String, String> {
 
     // Windows: make sure the PureThermal is bound to WinUSB/libusbK before libusb
     // tries to open it, and explain how to fix it if not.
-    let driver = crate::usb_driver_check::check();
+    let sim = crate::usb_stream::simulation();
+    let driver = if sim { crate::usb_driver_check::DriverReport::simulated() } else { crate::usb_driver_check::check() };
     eprintln!("[lepton-getthermal] USB driver check: {:?} - {}", driver.state, driver.summary);
     for d in &driver.details {
         eprintln!("[lepton-getthermal]   {d}");
@@ -291,6 +292,9 @@ pub struct CameraStatus {
 /// Opens nothing.
 #[tauri::command]
 pub fn camera_status() -> CameraStatus {
+    if crate::usb_stream::simulation() {
+        return CameraStatus { present: Some(true), problem: None };
+    }
     #[cfg(windows)]
     {
         use crate::usb_driver_check::DriverState;
@@ -321,4 +325,23 @@ pub fn disconnect_camera(state: State<'_, AppState>) -> Result<(), String> {
     state.lepton.lock().take();
     eprintln!("[lepton-getthermal] Camera released");
     Ok(())
+}
+
+/// Switch the simulated camera on or off. Switching releases the current
+/// camera so the next auto-connect opens the other source.
+#[tauri::command]
+pub fn set_simulation(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    if crate::usb_stream::simulation() != enabled {
+        crate::usb_stream::set_simulation(enabled);
+        if let Some(cam) = state.camera.lock().take() {
+            cam.stop_stream();
+        }
+        state.lepton.lock().take();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_simulation() -> bool {
+    crate::usb_stream::simulation()
 }

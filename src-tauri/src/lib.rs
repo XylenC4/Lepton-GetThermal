@@ -76,6 +76,8 @@ pub fn run() {
             commands::stream::get_reference,
             commands::stream::set_upscale,
             commands::stream::set_rotation,
+            commands::stream::set_simulation,
+            commands::stream::get_simulation,
             commands::session::load_session,
             commands::session::save_session,
             commands::controls::perform_ffc,

@@ -76,6 +76,16 @@ pub struct DriverReport {
 }
 
 impl DriverReport {
+    /// Simulated camera: no driver involved.
+    pub fn simulated() -> Self {
+        Self {
+            state: DriverState::Ok,
+            driver: "simulator".into(),
+            summary: "Simulated camera".into(),
+            hint: String::new(),
+            details: Vec::new(),
+        }
+    }
     pub fn usable(&self) -> bool {
         matches!(self.state, DriverState::Ok | DriverState::Warning | DriverState::NotApplicable)
     }

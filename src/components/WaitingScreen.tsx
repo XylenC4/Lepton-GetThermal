@@ -3,6 +3,7 @@ import type { WaitPhase } from "../hooks/useAutoConnect";
 interface WaitingScreenProps {
   phase: WaitPhase;
   onRetry: () => void;
+  onSimulate?: () => void;
 }
 
 const TEXT: Record<WaitPhase["kind"], { title: string; body: string }> = {
@@ -16,7 +17,7 @@ const TEXT: Record<WaitPhase["kind"], { title: string; body: string }> = {
 };
 
 /** Shown instead of the image while no camera is streaming. */
-export function WaitingScreen({ phase, onRetry }: WaitingScreenProps) {
+export function WaitingScreen({ phase, onRetry, onSimulate }: WaitingScreenProps) {
   const t = TEXT[phase.kind];
   const busy = phase.kind === "searching" || phase.kind === "connecting";
   const message = "message" in phase ? phase.message : null;
@@ -47,6 +48,11 @@ export function WaitingScreen({ phase, onRetry }: WaitingScreenProps) {
       {(phase.kind === "failed" || phase.kind === "problem") && (
         <button type="button" className="waiting-retry" onClick={onRetry}>
           Try now
+        </button>
+      )}
+      {onSimulate && phase.kind !== "connecting" && (
+        <button type="button" className="waiting-retry waiting-sim" onClick={onSimulate}>
+          No camera? Run simulation
         </button>
       )}
       {phase.kind === "searching" && (

@@ -10,6 +10,10 @@ license = "MIT"
 name = "lepton_getthermal_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+# Simulated camera (synthetic thermal scene) for testing without hardware.
+sim = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 cc = "1"
