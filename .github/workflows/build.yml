@@ -25,7 +25,9 @@ jobs:
           - name: windows-x64
             os: windows-2022
           - name: macos-arm64
-            os: macos-latest
+            os: macos-latest      # Apple Silicon; free runners are sometimes out of capacity
+          - name: macos-x64
+            os: macos-15-intel    # Intel; queues less, also runs on Apple Silicon via Rosetta
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     steps:
