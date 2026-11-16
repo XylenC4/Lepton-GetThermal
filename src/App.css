@@ -1555,3 +1555,16 @@ input[type="range"]::-webkit-slider-thumb:hover {
   cursor: pointer;
   backdrop-filter: blur(8px);
 }
+
+/* Panel header + tabs never shrink; only the page content scrolls. */
+.panel-header,
+.panel-tabs { flex-shrink: 0; }
+.panel-header h2 { white-space: nowrap; line-height: 1.2; margin: 0; }
+.panel-header .version-badge { flex-shrink: 0; line-height: 1.2; }
+
+@media (orientation: portrait) and (max-width: 760px) {
+  .app > .control-panel { overflow: hidden; }
+  .app > .control-panel > .panel-page { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .panel-header { padding: 10px 16px 8px; }
+  .panel-tab { padding: 12px 0 10px; font-size: 11px; }
+}
