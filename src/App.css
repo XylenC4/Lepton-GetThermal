@@ -1479,36 +1479,43 @@ input[type="range"]::-webkit-slider-thumb:hover {
   max-height: 100%;
 }
 
-/* Phone in portrait: video on top, panels stacked below. */
+/* Phone in portrait: video with the measurement bar on its right on top,
+   controls below. */
 @media (orientation: portrait) and (max-width: 760px) {
   .app {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 52vh minmax(0, 1fr);
+    grid-template-areas:
+      "video info"
+      "controls controls";
   }
   .app > main {
-    order: 0;
-    flex: 0 0 auto;
-    height: 52vh;
+    grid-area: video;
     min-height: 0;
+    min-width: 0;
   }
   .app > .info-panel {
-    order: 1;
-    width: 100%;
-    min-width: 0;
+    grid-area: info;
+    width: 96px;
+    min-width: 96px;
     height: auto;
-    max-height: 18vh;
+    min-height: 0;
     overflow-y: auto;
-    border-left: none;
-    border-top: 1px solid var(--border-dim);
   }
   .app > .control-panel {
-    order: 2;
+    grid-area: controls;
     width: 100%;
     min-width: 0;
-    flex: 1 1 auto;
     height: auto;
     min-height: 0;
     border-right: none;
     border-top: 1px solid var(--border-dim);
+  }
+  /* Full screen: video + measurement bar fill the screen. */
+  .app.app--fullscreen {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "video info";
   }
 }
 
@@ -1532,8 +1539,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   opacity: 0.8;
 }
 .fullscreen-btn:hover { opacity: 1; }
-.app.app--fullscreen > .control-panel,
-.app.app--fullscreen > .info-panel { display: none; }
+.app.app--fullscreen > .control-panel { display: none; }
 .app.app--fullscreen > main { flex: 1 1 auto; height: auto; }
 
 /* ===== Simulation ===== */
