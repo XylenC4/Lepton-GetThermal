@@ -28,7 +28,8 @@ if (-not (Test-Path "$Libs\vc_redist.x64.exe")) {
   Invoke-WebRequest -UseBasicParsing https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile "$Libs\vc_redist.x64.exe"
 }
 if (-not (Test-Path "$Libs\MSVCP140.dll")) {
-  $crt = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+  # Any VS 2022 edition (Build Tools locally, Enterprise on GitHub runners), x86 or x64 Program Files.
+  $crt = @("${env:ProgramFiles(x86)}", "$env:ProgramFiles") | ForEach-Object { Get-ChildItem "$_\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue } | Sort-Object FullName | Select-Object -Last 1
   if (-not $crt) { throw "VC++ CRT redist folder not found; copy MSVCP140*.dll / VCRUNTIME140*.dll into $Libs" }
   foreach ($n in 'msvcp140','msvcp140_1','vcruntime140','vcruntime140_1') { Copy-Item "$($crt.FullName)\$n.dll" "$Libs\$($n.ToUpper()).dll" }
 }

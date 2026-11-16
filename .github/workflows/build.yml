@@ -1,0 +1,91 @@
+name: Build
+
+# Builds Linux, Windows and macOS on GitHub's runners.
+# - Every push to main / pull request: artifacts on the run page (Actions tab -> run -> Artifacts).
+# - Pushing a tag like v0.2.1: also creates a draft GitHub Release with all files attached.
+# - "Run workflow" button in the Actions tab: manual build.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed only to create the release on tags
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-24.04  # ort prebuilt needs glibc >= 2.38
+          - name: windows-x64
+            os: windows-2022
+          - name: macos-arm64
+            os: macos-latest      # Apple Silicon; free runners are sometimes out of capacity
+          - name: macos-x64
+            os: macos-15-intel    # Intel; queues less, also runs on Apple Silicon via Rosetta
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev libudev-dev patchelf
+
+      - run: npm ci
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: npm run tauri build -- --bundles deb,appimage
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Installer
+
+      - name: Build (macOS, unsigned)
+        if: runner.os == 'macOS'
+        run: npm run tauri build -- --bundles app,dmg
+
+      - name: Collect files
+        shell: bash
+        run: |
+          mkdir out
+          R=src-tauri/target/release
+          case "$RUNNER_OS" in
+            Linux)   cp $R/bundle/deb/*.deb $R/bundle/appimage/*.AppImage packaging/linux/99-purethermal.rules out/ ;;
+            Windows) cp $R/portable/*.zip $R/bundle/nsis/*.exe out/ ;;
+            macOS)   cp $R/bundle/dmg/*.dmg out/ ;;
+          esac
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lepton-GetThermal-${{ matrix.name }}
+          path: out/*
+
+      - name: Attach to draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: out/*
